@@ -19,4 +19,4 @@ include 'pulsar-client-reactive-api'
 include 'pulsar-client-reactive-adapter'
 include 'pulsar-client-reactive-producer-cache-caffeine'
 include 'pulsar-client-reactive-jackson'
-
+include 'pulsar-client-reactive-rxjava3'

@@ -17,6 +17,7 @@
 package org.apache.pulsar.reactive.client.api;
 
 import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.reactive.client.internal.spi.ReactiveStreamsAdapterFactory;
 import org.reactivestreams.Publisher;
 
 public interface ReactiveMessageSender<T> {
@@ -31,13 +32,8 @@ public interface ReactiveMessageSender<T> {
 	Publisher<MessageId> send(Publisher<MessageSpec<T>> messageSpecs);
 
 	default <R extends ReactiveMessageSender<T>> R adapt(Class<R> adaptedSenderType) {
-		if (adaptedSenderType.equals(ReactorMessageSender.class)) {
-			return (R) toReactor();
-		}
-		if (adaptedSenderType.equals(RxJavaMessageSender.class)) {
-			return (R) toRxJava();
-		}
-		throw new IllegalArgumentException("Can only be adapted to ReactorMessageSender or RxJavaMessageSender");
+		return ReactiveStreamsAdapterFactory.getInstance()
+				.adapt(ReactiveMessageSender.class, adaptedSenderType, this);
 	}
 
 	/**
@@ -47,14 +43,4 @@ public interface ReactiveMessageSender<T> {
 	default ReactorMessageSender<T> toReactor() {
 		return new ReactorMessageSender<>(this);
 	}
-
-	/**
-	 * Convert to a RxJava 3 based message sender. Use only if you have RxJava 3 on the
-	 * class path (not pulled by pulsar-client-reactive-api).
-	 * @return the RxJava 3 based message sender instance.
-	 */
-	default RxJavaMessageSender<T> toRxJava() {
-		return new RxJavaMessageSender<>(this);
-	}
-
 }

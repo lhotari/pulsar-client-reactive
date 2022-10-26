@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-package org.apache.pulsar.reactive.client.api;
+package org.apache.pulsar.reactive.client.rxjava3;
 
 import java.util.function.Function;
 
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.reactive.client.api.MessageResult;
+import org.apache.pulsar.reactive.client.api.ReactiveMessageConsumer;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 

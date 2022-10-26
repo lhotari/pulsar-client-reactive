@@ -16,7 +16,38 @@
 
 package org.apache.pulsar.reactive.client.internal.spi;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ServiceLoader;
+
+import org.apache.pulsar.reactive.client.spi.ReactiveStreamsImplementationAdapter;
+
 public class ReactiveStreamsAdapterFactory {
+	private static final ReactiveStreamsAdapterFactory INSTANCE = new ReactiveStreamsAdapterFactory();
+	private final List<ReactiveStreamsImplementationAdapter> reactiveStreamsImplementationAdapters;
 
+	public static ReactiveStreamsAdapterFactory getInstance() {
+		return INSTANCE;
+	}
 
+	private ReactiveStreamsAdapterFactory() {
+		List<ReactiveStreamsImplementationAdapter> reactiveStreamsImplementationAdapters
+				= new ArrayList<>();
+		for(Iterator<ReactiveStreamsImplementationAdapter> iterator = ServiceLoader.load(ReactiveStreamsImplementationAdapter.class)
+				.iterator(); iterator.hasNext(); ) {
+			reactiveStreamsImplementationAdapters.add(iterator.next());
+		}
+		this.reactiveStreamsImplementationAdapters = Collections.unmodifiableList(reactiveStreamsImplementationAdapters);
+	}
+
+	public <S, T extends S> T adapt(Class<S> sourceType, Class<T> targetType, S sourceObject) {
+		for (ReactiveStreamsImplementationAdapter reactiveStreamsImplementationAdapter : reactiveStreamsImplementationAdapters) {
+			if (reactiveStreamsImplementationAdapter.supportsAdapting(sourceType, targetType, sourceObject)) {
+				return reactiveStreamsImplementationAdapter.adapt(sourceType, targetType, sourceObject);
+			}
+		}
+		throw new UnsupportedOperationException("Adapting to targetType " + targetType.getName() + " isn't supported. Perhaps the adaptation module is missing.");
+	}
 }

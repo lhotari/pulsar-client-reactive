@@ -5,11 +5,9 @@ plugins {
 }
 
 dependencies {
-	api libs.reactor.core
-	api libs.pulsar.client.api
+	api libs.rxjava3
 	api libs.slf4j.api
-	compileOnly libs.rxjava3
-	implementation libs.jctools.core
+	api project(':pulsar-client-reactive-api')
 }
 
-description = "Reactive Java client for Apache Pulsar"
+description = "RxJava3 client for Apache Pulsar"

@@ -18,6 +18,6 @@ package org.apache.pulsar.reactive.client.spi;
 
 public interface ReactiveStreamsImplementationAdapter {
 	String getName();
-	boolean supportsTargetType(Class<?> targetType);
+	<S, T extends S> boolean supportsAdapting(Class<S> sourceType, Class<T> targetType, S sourceObject);
 	<S, T extends S> T adapt(Class<S> sourceType, Class<T> targetType, S sourceObject);
 }

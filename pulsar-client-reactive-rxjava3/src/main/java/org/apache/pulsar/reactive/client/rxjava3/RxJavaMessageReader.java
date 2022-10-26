@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-package org.apache.pulsar.reactive.client.api;
+package org.apache.pulsar.reactive.client.rxjava3;
 
 import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Single;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.reactive.client.api.ReactiveMessageReader;
 
 public class RxJavaMessageReader<T> implements ReactiveMessageReader<T> {
 
