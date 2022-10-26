@@ -30,7 +30,7 @@ public interface ReactiveMessageSender<T> {
 	 */
 	Publisher<MessageId> send(Publisher<MessageSpec<T>> messageSpecs);
 
-	default <R extends ReactiveMessageSender> R adapt(Class<R> adaptedSenderType) {
+	default <R extends ReactiveMessageSender<T>> R adapt(Class<R> adaptedSenderType) {
 		if (adaptedSenderType.equals(ReactorMessageSender.class)) {
 			return (R) toReactor();
 		}

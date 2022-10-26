@@ -34,7 +34,7 @@ public interface ReactiveMessageConsumer<T> {
 	 */
 	Publisher<Void> consumeNothing();
 
-	default <R extends ReactiveMessageConsumer> R adapt(Class<R> adaptedConsumerType) {
+	default <R extends ReactiveMessageConsumer<T>> R adapt(Class<R> adaptedConsumerType) {
 		if (adaptedConsumerType.equals(ReactorMessageConsumer.class)) {
 			return (R) toReactor();
 		}
