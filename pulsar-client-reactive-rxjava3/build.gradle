@@ -1,0 +1,13 @@
+plugins {
+	id 'pulsar-client-reactive.codestyle-conventions'
+	id 'pulsar-client-reactive.library-conventions'
+	id 'pulsar-client-reactive.integration-test-conventions'
+}
+
+dependencies {
+	api libs.rxjava3
+	api libs.slf4j.api
+	api project(':pulsar-client-reactive-api')
+}
+
+description = "RxJava3 client for Apache Pulsar"

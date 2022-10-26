@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-rootProject.name = 'pulsar-client-reactive'
-include 'pulsar-client-reactive-api'
-include 'pulsar-client-reactive-adapter'
-include 'pulsar-client-reactive-producer-cache-caffeine'
-include 'pulsar-client-reactive-jackson'
-include 'pulsar-client-reactive-rxjava3'
+package org.apache.pulsar.reactive.client.spi;
+
+public interface ReactiveStreamsImplementationAdapter {
+	String getName();
+	<S, T extends S> boolean supportsAdapting(Class<S> sourceType, Class<T> targetType, S sourceObject);
+	<S, T extends S> T adapt(Class<S> sourceType, Class<T> targetType, S sourceObject);
+}
