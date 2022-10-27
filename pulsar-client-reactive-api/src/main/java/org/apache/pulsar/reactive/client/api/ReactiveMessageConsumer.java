@@ -24,7 +24,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface ReactiveMessageConsumer<T>
-		extends ReactiveStreamsMessageConsumer<T, Mono<Message<T>>, Flux<Message<T>>> {
+		extends GenericMessageConsumer<T, Mono<Message<T>>, Flux<Message<T>>> {
 
 	@Override
 	<R> Mono<R> consumeMessage(Function<Mono<Message<T>>, Publisher<MessageResult<R>>> messageHandler);

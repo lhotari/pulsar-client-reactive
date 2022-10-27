@@ -17,12 +17,9 @@
 package org.apache.pulsar.reactive.client.api;
 
 import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.MessageId;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
-public interface ReactiveStreamsMessageReader<T,
+public interface GenericMessageReader<T,
 		ONEMESSAGE extends Publisher<Message<T>>,
 		MANYMESSAGES extends Publisher<Message<T>>> {
 

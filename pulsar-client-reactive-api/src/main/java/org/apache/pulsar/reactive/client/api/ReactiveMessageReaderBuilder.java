@@ -16,86 +16,14 @@
 
 package org.apache.pulsar.reactive.client.api;
 
-import java.util.List;
+import org.apache.pulsar.client.api.Message;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import org.apache.pulsar.client.api.ConsumerCryptoFailureAction;
-import org.apache.pulsar.client.api.CryptoKeyReader;
-import org.apache.pulsar.client.api.Range;
+public interface ReactiveMessageReaderBuilder<T> extends
+		GenericMessageReaderBuilder<T, Mono<Message<T>>, Flux<Message<T>>, ReactiveMessageReader<T>, ReactiveMessageReaderBuilder<T>> {
 
-public interface ReactiveMessageReaderBuilder<T> {
-
-	ReactiveMessageReaderBuilder<T> startAtSpec(StartAtSpec startAtSpec);
-
-	ReactiveMessageReaderBuilder<T> endOfStreamAction(EndOfStreamAction endOfStreamAction);
-
-	default ReactiveMessageReaderBuilder<T> applySpec(ReactiveMessageReaderSpec readerSpec) {
-		getMutableSpec().applySpec(readerSpec);
-		return this;
-	}
-
-	ReactiveMessageReaderSpec toImmutableSpec();
-
-	MutableReactiveMessageReaderSpec getMutableSpec();
-
-	ReactiveMessageReaderBuilder<T> clone();
-
+	@Override
 	ReactiveMessageReader<T> build();
-
-	default ReactiveMessageReaderBuilder<T> topic(String topicName) {
-		getMutableSpec().getTopicNames().add(topicName);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> topic(String... topicNames) {
-		for (String topicName : topicNames) {
-			getMutableSpec().getTopicNames().add(topicName);
-		}
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> topicNames(List<String> topicNames) {
-		getMutableSpec().setTopicNames(topicNames);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> readerName(String readerName) {
-		getMutableSpec().setReaderName(readerName);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> subscriptionName(String subscriptionName) {
-		getMutableSpec().setSubscriptionName(subscriptionName);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> generatedSubscriptionNamePrefix(String generatedSubscriptionNamePrefix) {
-		getMutableSpec().setGeneratedSubscriptionNamePrefix(generatedSubscriptionNamePrefix);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> receiverQueueSize(Integer receiverQueueSize) {
-		getMutableSpec().setReceiverQueueSize(receiverQueueSize);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> readCompacted(Boolean readCompacted) {
-		getMutableSpec().setReadCompacted(readCompacted);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> keyHashRanges(List<Range> keyHashRanges) {
-		getMutableSpec().setKeyHashRanges(keyHashRanges);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> cryptoKeyReader(CryptoKeyReader cryptoKeyReader) {
-		getMutableSpec().setCryptoKeyReader(cryptoKeyReader);
-		return this;
-	}
-
-	default ReactiveMessageReaderBuilder<T> cryptoFailureAction(ConsumerCryptoFailureAction cryptoFailureAction) {
-		getMutableSpec().setCryptoFailureAction(cryptoFailureAction);
-		return this;
-	}
 
 }

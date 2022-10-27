@@ -21,7 +21,7 @@ import java.util.function.Function;
 import org.apache.pulsar.client.api.Message;
 import org.reactivestreams.Publisher;
 
-public interface ReactiveStreamsMessageConsumer<T, ONEMESSAGE extends Publisher<Message<T>>, MANYMESSAGES extends Publisher<Message<T>>> {
+public interface GenericMessageConsumer<T, ONEMESSAGE extends Publisher<Message<T>>, MANYMESSAGES extends Publisher<Message<T>>> {
 
 	<R> Publisher<R> consumeMessage(Function<ONEMESSAGE, Publisher<MessageResult<R>>> messageHandler);
 

@@ -19,7 +19,7 @@ package org.apache.pulsar.reactive.client.api;
 import org.apache.pulsar.client.api.MessageId;
 import org.reactivestreams.Publisher;
 
-public interface ReactiveStreamsMessageSender<T,
+public interface GenericMessageSender<T,
 		ONEMESSAGEID extends Publisher<MessageId>,
 		MANYMESSAGEIDS extends Publisher<MessageId>> {
 

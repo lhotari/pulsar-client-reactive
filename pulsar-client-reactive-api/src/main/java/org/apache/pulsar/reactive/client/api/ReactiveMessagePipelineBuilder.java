@@ -16,49 +16,9 @@
 
 package org.apache.pulsar.reactive.client.api;
 
-import java.time.Duration;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
-
 import org.apache.pulsar.client.api.Message;
-import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 
-public interface ReactiveMessagePipelineBuilder<T> {
-
-	OneByOneMessagePipelineBuilder<T> messageHandler(Function<Message<T>, Publisher<Void>> messageHandler);
-
-	ReactiveMessagePipelineBuilder<T> streamingMessageHandler(
-			Function<Flux<Message<T>>, Publisher<MessageResult<Void>>> streamingMessageHandler);
-
-	ReactiveMessagePipelineBuilder<T> transformPipeline(Function<Mono<Void>, Publisher<Void>> transformer);
-
-	ReactiveMessagePipelineBuilder<T> pipelineRetrySpec(Retry pipelineRetrySpec);
-
-	ReactiveMessagePipeline build();
-
-	interface OneByOneMessagePipelineBuilder<T> extends ReactiveMessagePipelineBuilder<T> {
-
-		OneByOneMessagePipelineBuilder<T> handlingTimeout(Duration handlingTimeout);
-
-		OneByOneMessagePipelineBuilder<T> errorLogger(BiConsumer<Message<T>, Throwable> errorLogger);
-
-		ConcurrentOneByOneMessagePipelineBuilder<T> concurrent();
-
-	}
-
-	interface ConcurrentOneByOneMessagePipelineBuilder<T> extends OneByOneMessagePipelineBuilder<T> {
-
-		ConcurrentOneByOneMessagePipelineBuilder<T> useKeyOrderedProcessing();
-
-		ConcurrentOneByOneMessagePipelineBuilder<T> groupOrderedProcessing(MessageGroupingFunction groupingFunction);
-
-		ConcurrentOneByOneMessagePipelineBuilder<T> concurrency(int concurrency);
-
-		ConcurrentOneByOneMessagePipelineBuilder<T> maxInflight(int maxInflight);
-
-	}
+public interface ReactiveMessagePipelineBuilder<T> extends GenericMessagePipelineBuilder<T, Flux<Message<T>>> {
 
 }

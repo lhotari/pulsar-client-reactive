@@ -22,7 +22,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface ReactiveMessageSender<T> extends
-		ReactiveStreamsMessageSender<T, Mono<MessageId>, Flux<MessageId>> {
+		GenericMessageSender<T, Mono<MessageId>, Flux<MessageId>> {
 
 	/**
 	 * Send one message.
