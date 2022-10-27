@@ -28,7 +28,7 @@ import org.apache.pulsar.reactive.client.internal.api.ApiImplementationFactory;
  *
  * @author Lari Hotari
  */
-public interface ReactivePulsarClient {
+public interface ReactivePulsarClient extends GenericPulsarClient<ReactiveMessageConsumer<?>> {
 
 	/**
 	 * Creates a builder for building a {@link ReactiveMessageSender}.
@@ -36,6 +36,7 @@ public interface ReactivePulsarClient {
 	 * @param <T> the message payload type
 	 * @return a builder for building a {@link ReactiveMessageSender}
 	 */
+	@Override
 	<T> ReactiveMessageSenderBuilder<T> messageSender(Schema<T> schema);
 
 	/**
@@ -44,6 +45,7 @@ public interface ReactivePulsarClient {
 	 * @param <T> the message payload type
 	 * @return a builder for building a {@link ReactiveMessageReader}
 	 */
+	@Override
 	<T> ReactiveMessageReaderBuilder<T> messageReader(Schema<T> schema);
 
 	/**
@@ -52,6 +54,7 @@ public interface ReactivePulsarClient {
 	 * @param <T> the message payload type
 	 * @return a builder for building a {@link ReactiveMessageConsumer}
 	 */
+	@Override
 	<T> ReactiveMessageConsumerBuilder<T> messageConsumer(Schema<T> schema);
 
 	/**
@@ -61,8 +64,11 @@ public interface ReactivePulsarClient {
 	 * @param <T> the message payload type
 	 * @return a builder for building a {@link ReactiveMessagePipeline}
 	 */
-	default <T> ReactiveMessagePipelineBuilder<T> messagePipeline(ReactiveMessageConsumer<T> messageConsumer) {
-		return ApiImplementationFactory.createReactiveMessageHandlerPipelineBuilder(messageConsumer);
+	@Override
+	default <T> ReactiveMessagePipelineBuilder<T> messagePipeline(Schema<T> schema,
+			ReactiveMessageConsumer<?> messageConsumer) {
+		return ApiImplementationFactory
+				.createReactiveMessageHandlerPipelineBuilder((ReactiveMessageConsumer<T>) messageConsumer);
 	}
 
 }

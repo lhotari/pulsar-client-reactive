@@ -16,15 +16,15 @@
 
 package org.apache.pulsar.reactive.client.api;
 
-import org.apache.pulsar.client.api.Message;
-import org.reactivestreams.Publisher;
+import org.apache.pulsar.client.api.Schema;
 
-public interface GenericMessageReader<T,
-		ONEMESSAGE extends Publisher<Message<T>>,
-		MANYMESSAGES extends Publisher<Message<T>>> {
+public interface GenericPulsarClient<MESSAGECONSUMER extends GenericMessageConsumer<?, ?, ?>> {
 
-	ONEMESSAGE readOne();
+	<T> GenericMessageSenderBuilder<T, ?, ?, ?, ?> messageSender(Schema<T> schema);
 
-	MANYMESSAGES readMany();
+	<T> GenericMessageReaderBuilder<T, ?, ?, ?, ?> messageReader(Schema<T> schema);
 
+	<T> GenericMessageConsumerBuilder<T, ?, ?, ?, ?> messageConsumer(Schema<T> schema);
+
+	<T> GenericMessagePipelineBuilder<T, ?> messagePipeline(Schema<T> schema, MESSAGECONSUMER messageConsumer);
 }

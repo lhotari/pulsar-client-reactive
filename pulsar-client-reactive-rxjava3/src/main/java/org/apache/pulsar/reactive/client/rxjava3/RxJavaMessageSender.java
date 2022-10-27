@@ -17,28 +17,16 @@
 package org.apache.pulsar.reactive.client.rxjava3;
 
 import io.reactivex.rxjava3.core.Flowable;
-import io.reactivex.rxjava3.core.Single;
 import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.reactive.client.api.GenericMessageSender;
 import org.apache.pulsar.reactive.client.api.MessageSpec;
-import org.apache.pulsar.reactive.client.api.ReactiveStreamsMessageSender;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.Mono;
 
-public class RxJavaMessageSender<T> implements ReactiveStreamsMessageSender<T> {
-
-	private final ReactiveStreamsMessageSender<T> delegate;
-
-	public RxJavaMessageSender(ReactiveStreamsMessageSender<T> delegate) {
-		this.delegate = delegate;
-	}
-
-	public Single<MessageId> send(MessageSpec<T> messageSpec) {
-		return Single.fromPublisher(this.delegate.send(Mono.just(messageSpec)));
-	}
+public interface RxJavaMessageSender<T> extends
+		GenericMessageSender<T, Flowable<MessageId>, Flowable<MessageId>> {
+	@Override
+	Flowable<MessageId> sendOne(MessageSpec<T> messageSpec);
 
 	@Override
-	public Flowable<MessageId> send(Publisher<MessageSpec<T>> messageSpecs) {
-		return Flowable.fromPublisher(this.delegate.send(messageSpecs));
-	}
-
+	Flowable<MessageId> sendMany(Publisher<MessageSpec<T>> messageSpecs);
 }

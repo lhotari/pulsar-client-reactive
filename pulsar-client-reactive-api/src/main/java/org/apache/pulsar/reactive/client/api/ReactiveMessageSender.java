@@ -30,7 +30,7 @@ public interface ReactiveMessageSender<T> extends
 	 * @return a publisher that will emit one message id and complete
 	 */
 	@Override
-	Mono<MessageId> send(MessageSpec<T> messageSpec);
+	Mono<MessageId> sendOne(MessageSpec<T> messageSpec);
 
 	/**
 	 * Send multiple messages and get the associated message ids in the same order as the
@@ -40,6 +40,6 @@ public interface ReactiveMessageSender<T> extends
 	 * the order that they have been sent
 	 */
 	@Override
-	Flux<MessageId> send(Publisher<MessageSpec<T>> messageSpecs);
+	Flux<MessageId> sendMany(Publisher<MessageSpec<T>> messageSpecs);
 
 }

@@ -68,7 +68,7 @@ class DefaultReactiveMessagePipelineBuilder<T>
 
 	private Duration handlingTimeout = Duration.ofSeconds(120);
 
-	private Function<Mono<Void>, Publisher<Void>> transformer = (it) -> it;
+	private Function<Publisher<Void>, Publisher<Void>> transformer = (it) -> it;
 
 	private Function<Flux<Message<T>>, Publisher<MessageResult<Void>>> streamingMessageHandler;
 
@@ -146,7 +146,7 @@ class DefaultReactiveMessagePipelineBuilder<T>
 	}
 
 	@Override
-	public ReactiveMessagePipelineBuilder<T> transformPipeline(Function<Mono<Void>, Publisher<Void>> transformer) {
+	public ReactiveMessagePipelineBuilder<T> transformPipeline(Function<Publisher<Void>, Publisher<Void>> transformer) {
 		this.transformer = transformer;
 		return this;
 	}

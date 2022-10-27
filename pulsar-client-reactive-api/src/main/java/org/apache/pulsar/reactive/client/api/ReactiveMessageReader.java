@@ -23,9 +23,9 @@ import reactor.core.publisher.Mono;
 public interface ReactiveMessageReader<T> extends GenericMessageReader<T, Mono<Message<T>>, Flux<Message<T>>> {
 
 	@Override
-	Mono<Message<T>> readMessage();
+	Mono<Message<T>> readOne();
 
 	@Override
-	Flux<Message<T>> readMessages();
+	Flux<Message<T>> readMany();
 
 }

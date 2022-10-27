@@ -14,17 +14,23 @@
  * limitations under the License.
  */
 
-package org.apache.pulsar.reactive.client.api;
+package org.apache.pulsar.reactive.client.rxjava3;
 
-import org.apache.pulsar.client.api.Message;
-import org.reactivestreams.Publisher;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.reactive.client.api.GenericPulsarClient;
 
-public interface GenericMessageReader<T,
-		ONEMESSAGE extends Publisher<Message<T>>,
-		MANYMESSAGES extends Publisher<Message<T>>> {
+public interface RxJavaPulsarClient extends GenericPulsarClient<RxJavaMessageConsumer<?>> {
 
-	ONEMESSAGE readOne();
+	@Override
+	<T> RxJavaMessageSenderBuilder<T> messageSender(Schema<T> schema);
 
-	MANYMESSAGES readMany();
+	@Override
+	<T> RxJavaMessageReaderBuilder<T> messageReader(Schema<T> schema);
+
+	@Override
+	<T> RxJavaMessageConsumerBuilder<T> messageConsumer(Schema<T> schema);
+
+	@Override
+	<T> RxJavaMessagePipelineBuilder<T> messagePipeline(Schema<T> schema, RxJavaMessageConsumer<?> messageConsumer);
 
 }

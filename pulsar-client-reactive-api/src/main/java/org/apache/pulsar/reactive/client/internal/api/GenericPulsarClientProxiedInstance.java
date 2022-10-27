@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-package org.apache.pulsar.reactive.client.spi;
+package org.apache.pulsar.reactive.client.internal.api;
 
-public interface ReactiveStreamsImplementationAdapter {
-	String getName();
-	<S, T extends S> boolean supportsAdapting(Class<S> sourceType, Class<T> targetType, S sourceObject);
-	<S, T extends S> T adapt(Class<S> sourceType, Class<T> targetType, S sourceObject);
+public interface GenericPulsarClientProxiedInstance {
+
+	Object getDelegateInstance();
+
 }

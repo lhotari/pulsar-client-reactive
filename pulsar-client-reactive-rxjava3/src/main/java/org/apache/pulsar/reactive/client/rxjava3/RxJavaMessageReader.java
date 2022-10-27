@@ -17,25 +17,13 @@
 package org.apache.pulsar.reactive.client.rxjava3;
 
 import io.reactivex.rxjava3.core.Flowable;
-import io.reactivex.rxjava3.core.Single;
 import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.reactive.client.api.ReactiveMessageReader;
+import org.apache.pulsar.reactive.client.api.GenericMessageReader;
 
-public class RxJavaMessageReader<T> implements ReactiveMessageReader<T> {
-
-	private final ReactiveMessageReader<T> delegate;
-
-	public RxJavaMessageReader(ReactiveMessageReader<T> delegate) {
-		this.delegate = delegate;
-	}
-
-	public Single<Message<T>> readOne() {
-		return Single.fromPublisher(this.delegate.read());
-	}
+public interface RxJavaMessageReader <T> extends GenericMessageReader<T, Flowable<Message<T>>, Flowable<Message<T>>> {
+	@Override
+	Flowable<Message<T>> readOne();
 
 	@Override
-	public Flowable<Message<T>> read() {
-		return Flowable.fromPublisher(this.delegate.read());
-	}
-
+	Flowable<Message<T>> readMany();
 }

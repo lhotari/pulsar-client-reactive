@@ -16,21 +16,14 @@
 
 package org.apache.pulsar.reactive.client.rxjava3;
 
-import org.apache.pulsar.reactive.client.spi.ReactiveStreamsImplementationAdapter;
+import io.reactivex.rxjava3.core.Flowable;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.reactive.client.api.GenericMessageSenderBuilder;
 
-public class RxJavaAdapter implements ReactiveStreamsImplementationAdapter {
-	@Override
-	public String getName() {
-		return "RxJava3";
-	}
-
-	@Override
-	public <S, T extends S> boolean supportsAdapting(Class<S> sourceType, Class<T> targetType, S sourceObject) {
-		return false;
-	}
+public interface RxJavaMessageSenderBuilder<T> extends
+		GenericMessageSenderBuilder<T, Flowable<MessageId>, Flowable<MessageId>, RxJavaMessageSender<T>, RxJavaMessageSenderBuilder<T>> {
 
 	@Override
-	public <S, T extends S> T adapt(Class<S> sourceType, Class<T> targetType, S sourceObject) {
-		return null;
-	}
+	RxJavaMessageSender<T> build();
+
 }

@@ -28,7 +28,7 @@ public interface GenericMessageSender<T,
 	 * @param messageSpec the spec of the message to send
 	 * @return a publisher that will emit one message id and complete
 	 */
-	ONEMESSAGEID send(MessageSpec<T> messageSpec);
+	ONEMESSAGEID sendOne(MessageSpec<T> messageSpec);
 
 	/**
 	 * Send multiple messages and get the associated message ids in the same order as the
@@ -37,6 +37,6 @@ public interface GenericMessageSender<T,
 	 * @return a publisher that will emit a message id per message successfully sent in
 	 * the order that they have been sent
 	 */
-	MANYMESSAGEIDS send(Publisher<MessageSpec<T>> messageSpecs);
+	MANYMESSAGEIDS sendMany(Publisher<MessageSpec<T>> messageSpecs);
 
 }

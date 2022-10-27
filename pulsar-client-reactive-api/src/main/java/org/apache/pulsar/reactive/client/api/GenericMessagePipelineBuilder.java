@@ -31,7 +31,7 @@ public interface GenericMessagePipelineBuilder<T, P extends Publisher<Message<T>
 	GenericMessagePipelineBuilder<T, P> streamingMessageHandler(
 			Function<P, Publisher<MessageResult<Void>>> streamingMessageHandler);
 
-	GenericMessagePipelineBuilder<T, P> transformPipeline(Function<Mono<Void>, Publisher<Void>> transformer);
+	GenericMessagePipelineBuilder<T, P> transformPipeline(Function<Publisher<Void>, Publisher<Void>> transformer);
 
 	GenericMessagePipelineBuilder<T, P> pipelineRetrySpec(Retry pipelineRetrySpec);
 

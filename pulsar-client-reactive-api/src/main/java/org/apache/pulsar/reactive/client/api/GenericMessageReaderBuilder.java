@@ -41,7 +41,7 @@ public interface GenericMessageReaderBuilder<T, ONEMESSAGE extends Publisher<Mes
 
 	SELF clone();
 
-	ReactiveMessageReader<T> build();
+	B build();
 
 	default SELF topic(String topicName) {
 		getMutableSpec().getTopicNames().add(topicName);

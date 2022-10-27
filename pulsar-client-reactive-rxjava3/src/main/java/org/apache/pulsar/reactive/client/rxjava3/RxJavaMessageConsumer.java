@@ -19,34 +19,18 @@ package org.apache.pulsar.reactive.client.rxjava3;
 import java.util.function.Function;
 
 import io.reactivex.rxjava3.core.Flowable;
-import io.reactivex.rxjava3.core.Single;
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.reactive.client.api.GenericMessageConsumer;
 import org.apache.pulsar.reactive.client.api.MessageResult;
-import org.apache.pulsar.reactive.client.api.ReactiveMessageConsumer;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.Flux;
 
-public class RxJavaMessageConsumer<T> implements ReactiveMessageConsumer<T> {
-
-	private final ReactiveMessageConsumer<T> delegate;
-
-	public RxJavaMessageConsumer(ReactiveMessageConsumer<T> delegate) {
-		this.delegate = delegate;
-	}
-
-	public <R> Single<R> consumeOne(Function<Single<Message<T>>, Single<MessageResult<R>>> messageHandler) {
-		return Single.fromPublisher(
-				this.delegate.consume((messages) -> messageHandler.apply(Single.fromPublisher(messages)).toFlowable()));
-	}
+public interface RxJavaMessageConsumer<T> extends GenericMessageConsumer<T, Flowable<Message<T>>, Flowable<Message<T>>> {
+	@Override
+	<R> Flowable<R> consumeOne(Function<Flowable<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
 
 	@Override
-	public <R> Flowable<R> consume(Function<Flux<Message<T>>, Publisher<MessageResult<R>>> messageHandler) {
-		return Flowable.fromPublisher(this.delegate.consume(messageHandler));
-	}
+	<R> Flowable<R> consumeMany(Function<Flowable<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
 
 	@Override
-	public Flowable<Void> consumeNothing() {
-		return Flowable.fromPublisher(this.delegate.consumeNothing());
-	}
-
+	Flowable<Void> consumeNothing();
 }

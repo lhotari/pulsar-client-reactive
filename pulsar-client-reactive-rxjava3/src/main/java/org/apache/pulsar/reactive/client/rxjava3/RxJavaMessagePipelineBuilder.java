@@ -14,17 +14,12 @@
  * limitations under the License.
  */
 
-package org.apache.pulsar.reactive.client.api;
+package org.apache.pulsar.reactive.client.rxjava3;
 
+import io.reactivex.rxjava3.core.Flowable;
 import org.apache.pulsar.client.api.Message;
-import org.reactivestreams.Publisher;
+import org.apache.pulsar.reactive.client.api.GenericMessagePipelineBuilder;
 
-public interface GenericMessageReader<T,
-		ONEMESSAGE extends Publisher<Message<T>>,
-		MANYMESSAGES extends Publisher<Message<T>>> {
-
-	ONEMESSAGE readOne();
-
-	MANYMESSAGES readMany();
+public interface RxJavaMessagePipelineBuilder<T> extends GenericMessagePipelineBuilder<T, Flowable<Message<T>>> {
 
 }

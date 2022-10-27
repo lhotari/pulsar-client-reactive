@@ -23,9 +23,9 @@ import org.reactivestreams.Publisher;
 
 public interface GenericMessageConsumer<T, ONEMESSAGE extends Publisher<Message<T>>, MANYMESSAGES extends Publisher<Message<T>>> {
 
-	<R> Publisher<R> consumeMessage(Function<ONEMESSAGE, Publisher<MessageResult<R>>> messageHandler);
+	<R> Publisher<R> consumeOne(Function<ONEMESSAGE, Publisher<MessageResult<R>>> messageHandler);
 
-	<R> Publisher<R> consumeMessages(Function<MANYMESSAGES, Publisher<MessageResult<R>>> messageHandler);
+	<R> Publisher<R> consumeMany(Function<MANYMESSAGES, Publisher<MessageResult<R>>> messageHandler);
 
 	/**
 	 * Creates the Pulsar Consumer and immediately closes it. This is useful for creating
