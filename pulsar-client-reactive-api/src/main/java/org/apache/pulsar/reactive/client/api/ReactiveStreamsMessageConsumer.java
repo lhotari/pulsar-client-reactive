@@ -20,17 +20,12 @@ import java.util.function.Function;
 
 import org.apache.pulsar.client.api.Message;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
-public interface ReactiveMessageConsumer<T>
-		extends ReactiveStreamsMessageConsumer<T, Mono<Message<T>>, Flux<Message<T>>> {
+public interface ReactiveStreamsMessageConsumer<T, ONEMESSAGE extends Publisher<Message<T>>, MANYMESSAGES extends Publisher<Message<T>>> {
 
-	@Override
-	<R> Mono<R> consumeMessage(Function<Mono<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
+	<R> Publisher<R> consumeMessage(Function<ONEMESSAGE, Publisher<MessageResult<R>>> messageHandler);
 
-	@Override
-	<R> Flux<R> consumeMessages(Function<Flux<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
+	<R> Publisher<R> consumeMessages(Function<MANYMESSAGES, Publisher<MessageResult<R>>> messageHandler);
 
 	/**
 	 * Creates the Pulsar Consumer and immediately closes it. This is useful for creating
@@ -38,8 +33,6 @@ public interface ReactiveMessageConsumer<T>
 	 * returned Mono is subscribed.
 	 * @return a Mono for consuming nothing
 	 */
-
-	@Override
-	Mono<Void> consumeNothing();
+	Publisher<Void> consumeNothing();
 
 }

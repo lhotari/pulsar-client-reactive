@@ -20,10 +20,12 @@ import org.apache.pulsar.client.api.Message;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-public interface ReactiveMessageReader<T> {
+public interface ReactiveMessageReader<T> extends ReactiveStreamsMessageReader<T, Mono<Message<T>>, Flux<Message<T>>> {
 
+	@Override
 	Mono<Message<T>> readMessage();
 
+	@Override
 	Flux<Message<T>> readMessages();
 
 }

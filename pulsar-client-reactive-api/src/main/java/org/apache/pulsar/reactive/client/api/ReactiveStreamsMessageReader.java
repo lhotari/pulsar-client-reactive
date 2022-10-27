@@ -16,30 +16,18 @@
 
 package org.apache.pulsar.reactive.client.api;
 
-import java.util.function.Function;
-
 import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-public interface ReactiveMessageConsumer<T>
-		extends ReactiveStreamsMessageConsumer<T, Mono<Message<T>>, Flux<Message<T>>> {
+public interface ReactiveStreamsMessageReader<T,
+		ONEMESSAGE extends Publisher<Message<T>>,
+		MANYMESSAGES extends Publisher<Message<T>>> {
 
-	@Override
-	<R> Mono<R> consumeMessage(Function<Mono<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
+	ONEMESSAGE readMessage();
 
-	@Override
-	<R> Flux<R> consumeMessages(Function<Flux<Message<T>>, Publisher<MessageResult<R>>> messageHandler);
-
-	/**
-	 * Creates the Pulsar Consumer and immediately closes it. This is useful for creating
-	 * the Pulsar subscription that is related to the consumer. Nothing happens unless the
-	 * returned Mono is subscribed.
-	 * @return a Mono for consuming nothing
-	 */
-
-	@Override
-	Mono<Void> consumeNothing();
+	MANYMESSAGES readMessages();
 
 }

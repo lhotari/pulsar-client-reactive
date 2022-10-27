@@ -21,7 +21,7 @@ import org.reactivestreams.Publisher;
 
 public interface ReactiveStreamsMessageSender<T,
 		ONEMESSAGEID extends Publisher<MessageId>,
-		MANYMESSAGEID extends Publisher<MessageId>> {
+		MANYMESSAGEIDS extends Publisher<MessageId>> {
 
 	/**
 	 * Send one message.
@@ -37,6 +37,6 @@ public interface ReactiveStreamsMessageSender<T,
 	 * @return a publisher that will emit a message id per message successfully sent in
 	 * the order that they have been sent
 	 */
-	MANYMESSAGEID send(Publisher<MessageSpec<T>> messageSpecs);
+	MANYMESSAGEIDS send(Publisher<MessageSpec<T>> messageSpecs);
 
 }
