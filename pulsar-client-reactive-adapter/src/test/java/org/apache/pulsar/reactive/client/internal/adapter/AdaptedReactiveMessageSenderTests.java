@@ -47,6 +47,7 @@ import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.ProducerAccessMode;
 import org.apache.pulsar.client.api.ProducerCryptoFailureAction;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.PulsarClientException.AlreadyClosedException;
 import org.apache.pulsar.client.api.PulsarClientException.ProducerQueueIsFullError;
 import org.apache.pulsar.client.api.Schema;
 import org.apache.pulsar.client.impl.MessageIdImpl;
@@ -77,6 +78,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -86,7 +88,7 @@ import static org.mockito.Mockito.verify;
 /**
  * Tests for {@link AdaptedReactiveMessageSender}.
  */
-class AdaptedReactiveMessageSenderTest {
+class AdaptedReactiveMessageSenderTests {
 
 	@Test
 	void sendOne() throws Exception {
@@ -143,20 +145,38 @@ class AdaptedReactiveMessageSenderTest {
 		failedProducer.completeExceptionally(new RuntimeException("didn't match expected producer conf"));
 		doReturn(failedProducer).when(pulsarClient).createProducerAsync(any(), eq(Schema.STRING), isNull());
 		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
-				.createProducerAsync(eq(expectedProducerConf), eq(Schema.STRING), isNull());
+			.createProducerAsync(eq(expectedProducerConf), eq(Schema.STRING), isNull());
 
 		ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageSender(Schema.STRING).topic("my-topic").producerName("my-producer")
-				.sendTimeout(Duration.ofSeconds(1)).maxPendingMessages(2).maxPendingMessagesAcrossPartitions(3)
-				.messageRoutingMode(MessageRoutingMode.CustomPartition).hashingScheme(HashingScheme.Murmur3_32Hash)
-				.cryptoFailureAction(ProducerCryptoFailureAction.SEND).messageRouter(messageRouter)
-				.batchingMaxPublishDelay(Duration.ofSeconds(4)).roundRobinRouterBatchingPartitionSwitchFrequency(5)
-				.batchingMaxMessages(6).batchingMaxBytes(7).batchingEnabled(false).batcherBuilder(batcherBuilder)
-				.chunkingEnabled(true).cryptoKeyReader(cryptoKeyReader).encryptionKeys(Collections.singleton("my-key"))
-				.compressionType(CompressionType.LZ4).initialSequenceId(8).autoUpdatePartitions(true)
-				.autoUpdatePartitionsInterval(Duration.ofSeconds(9)).multiSchema(true)
-				.accessMode(ProducerAccessMode.Exclusive).lazyStartPartitionedProducers(true)
-				.property("my-key", "my-value").clone().build();
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.producerName("my-producer")
+			.sendTimeout(Duration.ofSeconds(1))
+			.maxPendingMessages(2)
+			.maxPendingMessagesAcrossPartitions(3)
+			.messageRoutingMode(MessageRoutingMode.CustomPartition)
+			.hashingScheme(HashingScheme.Murmur3_32Hash)
+			.cryptoFailureAction(ProducerCryptoFailureAction.SEND)
+			.messageRouter(messageRouter)
+			.batchingMaxPublishDelay(Duration.ofSeconds(4))
+			.roundRobinRouterBatchingPartitionSwitchFrequency(5)
+			.batchingMaxMessages(6)
+			.batchingMaxBytes(7)
+			.batchingEnabled(false)
+			.batcherBuilder(batcherBuilder)
+			.chunkingEnabled(true)
+			.cryptoKeyReader(cryptoKeyReader)
+			.encryptionKeys(Collections.singleton("my-key"))
+			.compressionType(CompressionType.LZ4)
+			.initialSequenceId(8)
+			.autoUpdatePartitions(true)
+			.autoUpdatePartitionsInterval(Duration.ofSeconds(9))
+			.multiSchema(true)
+			.accessMode(ProducerAccessMode.Exclusive)
+			.lazyStartPartitionedProducers(true)
+			.property("my-key", "my-value")
+			.clone()
+			.build();
 
 		MessageSpec<String> messageSpec = spy(MessageSpec.of("test"));
 		MessageId messageId1 = reactiveSender.sendOne(messageSpec).block(Duration.ofSeconds(5));
@@ -177,24 +197,27 @@ class AdaptedReactiveMessageSenderTest {
 		given(producer.newMessage()).willAnswer((__) -> {
 			TypedMessageBuilderImpl<String> typedMessageBuilder = spy(
 					new TypedMessageBuilderImpl<>(producer, Schema.STRING));
-			given(typedMessageBuilder.sendAsync()).willAnswer((___) -> {
+			willAnswer((___) -> {
 				CompletableFuture<MessageId> failed = new CompletableFuture<>();
 				failed.completeExceptionally(new ProducerQueueIsFullError("Queue is full"));
 				return failed;
-			});
+			}).given(typedMessageBuilder).sendAsync();
 			return typedMessageBuilder;
 		});
 
-		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.STRING), isNull());
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
 
 		ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageSender(Schema.STRING).topic("my-topic").build();
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.build();
 
 		StepVerifier.create(reactiveSender.sendOne(MessageSpec.of("test1")))
-				// the original exception should be returned without wrapping it in
-				// ReactiveMessageSendingException
-				.expectError(ProducerQueueIsFullError.class).verify();
+			// the original exception should be returned without wrapping it in
+			// ReactiveMessageSendingException
+			.expectError(ProducerQueueIsFullError.class)
+			.verify();
 	}
 
 	@Test
@@ -210,37 +233,39 @@ class AdaptedReactiveMessageSenderTest {
 		given(producer.newMessage()).willAnswer((__) -> {
 			TypedMessageBuilderImpl<String> typedMessageBuilder = spy(
 					new TypedMessageBuilderImpl<>(producer, Schema.STRING));
-			given(typedMessageBuilder.sendAsync()).willAnswer((___) -> {
+			willAnswer((___) -> {
 				if (entryId.get() == 1) {
 					CompletableFuture<MessageId> failed = new CompletableFuture<>();
 					failed.completeExceptionally(new ProducerQueueIsFullError("Queue is full"));
 					return failed;
 				}
-				MessageId messageId = DefaultImplementation.getDefaultImplementation().newMessageId(1,
-						entryId.incrementAndGet(), 1);
+				MessageId messageId = DefaultImplementation.getDefaultImplementation()
+					.newMessageId(1, entryId.incrementAndGet(), 1);
 				messageIds.add(messageId);
 				return CompletableFuture.completedFuture(messageId);
-			});
+			}).given(typedMessageBuilder).sendAsync();
 			return typedMessageBuilder;
 		});
 
-		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.STRING), isNull());
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
 
 		ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageSender(Schema.STRING).topic("my-topic").stopOnError(true).build();
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.stopOnError(true)
+			.build();
 
 		MessageSpec<String> failingMessage = MessageSpec.builder("test2").correlationMetadata("my-context").build();
 		Flux<MessageSpec<String>> messageSpecs = Flux.just(MessageSpec.of("test1"), failingMessage);
 		StepVerifier.create(reactiveSender.sendMany(messageSpecs))
-				.assertNext((next) -> assertThat(next.getMessageId()).isEqualTo(messageIds.get(0)))
-				.verifyErrorSatisfies((throwable) -> assertThat(throwable)
-						.asInstanceOf(InstanceOfAssertFactories.type(ReactiveMessageSendingException.class))
-						.satisfies((rmse) -> assertThat(rmse.getCause()).isInstanceOf(ProducerQueueIsFullError.class))
-						.satisfies((rmse) -> assertThat(rmse.getMessageSpec()).isSameAs(failingMessage))
-						.satisfies((rmse) -> assertThat((String) rmse.getCorrelationMetadata()).isEqualTo("my-context"))
-						.satisfies(
-								(rmse) -> assertThat(rmse.toString()).contains("correlation metadata={my-context}")));
+			.assertNext((next) -> assertThat(next.getMessageId()).isEqualTo(messageIds.get(0)))
+			.verifyErrorSatisfies((throwable) -> assertThat(throwable)
+				.asInstanceOf(InstanceOfAssertFactories.type(ReactiveMessageSendingException.class))
+				.satisfies((rmse) -> assertThat(rmse.getCause()).isInstanceOf(ProducerQueueIsFullError.class))
+				.satisfies((rmse) -> assertThat(rmse.getMessageSpec()).isSameAs(failingMessage))
+				.satisfies((rmse) -> assertThat((String) rmse.getCorrelationMetadata()).isEqualTo("my-context"))
+				.satisfies((rmse) -> assertThat(rmse.toString()).contains("correlation metadata={my-context}")));
 	}
 
 	@Test
@@ -256,25 +281,27 @@ class AdaptedReactiveMessageSenderTest {
 		given(producer.newMessage()).willAnswer((__) -> {
 			TypedMessageBuilderImpl<String> typedMessageBuilder = spy(
 					new TypedMessageBuilderImpl<>(producer, Schema.STRING));
-			given(typedMessageBuilder.sendAsync()).willAnswer((___) -> {
+			willAnswer((___) -> {
 				if (entryId.get() == 2) {
 					CompletableFuture<MessageId> failed = new CompletableFuture<>();
 					failed.completeExceptionally(new ProducerQueueIsFullError("Queue is full"));
 					return failed;
 				}
-				MessageId messageId = DefaultImplementation.getDefaultImplementation().newMessageId(1,
-						entryId.incrementAndGet(), 1);
+				MessageId messageId = DefaultImplementation.getDefaultImplementation()
+					.newMessageId(1, entryId.incrementAndGet(), 1);
 				messageIds.add(messageId);
 				return CompletableFuture.completedFuture(messageId);
-			});
+			}).given(typedMessageBuilder).sendAsync();
 			return typedMessageBuilder;
 		});
 
-		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.STRING), isNull());
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
 
 		ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageSender(Schema.STRING).topic("my-topic").build();
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.build();
 
 		MessageSpec<String> messageSpec1 = MessageSpec.of("test1");
 		Flux<MessageSpec<String>> keysAndMessageSpecs = Flux.just(messageSpec1,
@@ -311,8 +338,8 @@ class AdaptedReactiveMessageSenderTest {
 
 		doReturn(typedMessageBuilder).when(producer).newMessage();
 
-		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.STRING), isNull());
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
 
 		ProducerBase<Integer> producer2 = mock(ProducerBase.class);
 		doReturn(CompletableFuture.completedFuture(null)).when(producer2).closeAsync();
@@ -324,8 +351,8 @@ class AdaptedReactiveMessageSenderTest {
 
 		doReturn(typedMessageBuilder2).when(producer2).newMessage();
 
-		doReturn(CompletableFuture.completedFuture(producer2)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.INT32), isNull());
+		doReturn(CompletableFuture.completedFuture(producer2)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.INT32), isNull());
 
 		// Sender without cache
 		createSenderAndSendMessages(pulsarClient, Schema.STRING, "my-topic", null, new String[] { "a", "b", "c" });
@@ -354,21 +381,25 @@ class AdaptedReactiveMessageSenderTest {
 		return Arrays.asList(
 				Arguments.of("ConcurrentHashMapProducerCacheProvider",
 						AdaptedReactivePulsarClientFactory.createCache(new ConcurrentHashMapProducerCacheProvider())),
-				Arguments.of("Default", AdaptedReactivePulsarClientFactory.createCache())).stream();
+				Arguments.of("Default", AdaptedReactivePulsarClientFactory.createCache()))
+			.stream();
 	}
 
 	private static <T> void createSenderAndSendMessages(PulsarClient client, Schema<T> schema, String topic,
 			ReactiveMessageSenderCache cache, T[] values) {
 		assertThat(values).hasSize(3);
 		ReactiveMessageSenderBuilder<T> builder = AdaptedReactivePulsarClientFactory.create(client)
-				.messageSender(schema).topic(topic);
+			.messageSender(schema)
+			.topic(topic);
 		if (cache != null) {
 			builder.cache(cache);
 		}
 		ReactiveMessageSender<T> sender = builder.build();
 
-		sender.sendOne(MessageSpec.of(values[0])).then(sender.sendOne(MessageSpec.of(values[1])))
-				.thenMany(Flux.just(MessageSpec.of(values[2])).as(sender::sendMany)).blockLast(Duration.ofSeconds(5));
+		sender.sendOne(MessageSpec.of(values[0]))
+			.then(sender.sendOne(MessageSpec.of(values[1])))
+			.thenMany(Flux.just(MessageSpec.of(values[2])).as(sender::sendMany))
+			.blockLast(Duration.ofSeconds(5));
 	}
 
 	@Test
@@ -385,14 +416,17 @@ class AdaptedReactiveMessageSenderTest {
 		doReturn(CompletableFuture.completedFuture(MessageId.earliest)).when(typedMessageBuilder).sendAsync();
 		doReturn(typedMessageBuilder).when(producer).newMessage();
 
-		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient).createProducerAsync(any(),
-				eq(Schema.STRING), isNull());
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
 
 		ReactiveMessageSenderCache cache = AdaptedReactivePulsarClientFactory.createCache();
 		createSenderAndSendMessages(pulsarClient, Schema.STRING, "my-topic", cache, new String[] { "a", "b", "c" });
 
 		ReactiveMessageSender<String> sender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageSender(Schema.STRING).topic("my-topic").cache(cache).build();
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.cache(cache)
+			.build();
 
 		sender.sendOne(MessageSpec.of("a")).block(Duration.ofSeconds(5));
 		sender.sendOne(MessageSpec.of("b")).block(Duration.ofSeconds(5));
@@ -427,7 +461,7 @@ class AdaptedReactiveMessageSenderTest {
 		// Verify that an error is emitted if the producer doesn't reconnect in time
 		doReturn(false).when(producer).isConnected();
 		Duration reconnectTimeout = StepVerifier.create(sender.sendOne(MessageSpec.of("c")))
-				.verifyError(IllegalStateException.class);
+			.verifyError(IllegalStateException.class);
 
 		assertThat(reconnectTimeout).isBetween(Duration.ofSeconds(4), Duration.ofSeconds(5));
 	}
@@ -437,18 +471,17 @@ class AdaptedReactiveMessageSenderTest {
 	void maxInFlightUsingSendOne(int maxInflight, int maxElements) throws Exception {
 		doTestMaxInFlight(
 				(reactiveSender, inputFlux) -> inputFlux
-						.flatMap((i) -> reactiveSender.sendOne(MessageSpec.of(String.valueOf(i))), 100),
+					.flatMap((i) -> reactiveSender.sendOne(MessageSpec.of(String.valueOf(i))), 100),
 				maxInflight, maxElements);
 	}
 
 	@ParameterizedTest
 	@CsvSource({ "7,100", "13,100", "37,500", "51,1000" })
 	void maxInFlightUsingSendMany(int maxInflight, int maxElements) throws Exception {
-		doTestMaxInFlight(
-				(reactiveSender, inputFlux) -> inputFlux.window(3)
-						.flatMap((subFlux) -> subFlux.map((i) -> MessageSpec.of(String.valueOf(i)))
-								.as(reactiveSender::sendMany).map(MessageSendResult::getMessageId), 100),
-				maxInflight, maxElements);
+		doTestMaxInFlight((reactiveSender, inputFlux) -> inputFlux.window(3)
+			.flatMap((subFlux) -> subFlux.map((i) -> MessageSpec.of(String.valueOf(i)))
+				.as(reactiveSender::sendMany)
+				.map(MessageSendResult::getMessageId), 100), maxInflight, maxElements);
 	}
 
 	void doTestMaxInFlight(BiFunction<ReactiveMessageSender<String>, Flux<Integer>, Flux<MessageId>> sendingFunction,
@@ -467,7 +500,7 @@ class AdaptedReactiveMessageSenderTest {
 			given(producer.newMessage()).willAnswer((__) -> {
 				TypedMessageBuilderImpl<String> typedMessageBuilder = spy(
 						new TypedMessageBuilderImpl<>(producer, Schema.STRING));
-				given(typedMessageBuilder.sendAsync()).willAnswer((___) -> {
+				willAnswer((___) -> {
 					CompletableFuture<MessageId> messageSender = new CompletableFuture<>();
 					finalExecutorService.execute(() -> {
 						long current = totalRequests.incrementAndGet();
@@ -481,17 +514,20 @@ class AdaptedReactiveMessageSenderTest {
 								DefaultImplementation.getDefaultImplementation().newMessageId(1, encodedEntryId, 1));
 					}, 100, TimeUnit.MILLISECONDS);
 					return messageSender;
-				});
+				}).given(typedMessageBuilder).sendAsync();
 				return typedMessageBuilder;
 			});
 
 			given(pulsarClient.createProducerAsync(any(), eq(Schema.STRING), isNull()))
-					.willReturn(CompletableFuture.completedFuture(producer));
+				.willReturn(CompletableFuture.completedFuture(producer));
 
 			ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-					.messageSender(Schema.STRING).maxInflight(maxInflight)
-					.cache(AdaptedReactivePulsarClientFactory.createCache()).maxConcurrentSenderSubscriptions(1024)
-					.topic("my-topic").build();
+				.messageSender(Schema.STRING)
+				.maxInflight(maxInflight)
+				.cache(AdaptedReactivePulsarClientFactory.createCache())
+				.maxConcurrentSenderSubscriptions(1024)
+				.topic("my-topic")
+				.build();
 
 			List<Integer> inputValues = IntStream.rangeClosed(1, maxElements).boxed().collect(Collectors.toList());
 
@@ -499,8 +535,9 @@ class AdaptedReactiveMessageSenderTest {
 			Flux<MessageId> outputFlux = sendingFunction.apply(reactiveSender, inputFlux);
 
 			// get message value from encoded entry id in message id
-			List<Integer> outputValues = outputFlux.map((m) -> (int) ((MessageIdImpl) m).getEntryId()).collectList()
-					.block();
+			List<Integer> outputValues = outputFlux.map((m) -> (int) ((MessageIdImpl) m).getEntryId())
+				.collectList()
+				.block();
 			assertThat(outputValues).containsExactlyInAnyOrderElementsOf(inputValues);
 			assertThat(requestsMax.get()).isEqualTo(maxInflight);
 		}
@@ -509,6 +546,37 @@ class AdaptedReactiveMessageSenderTest {
 				executorService.shutdownNow();
 			}
 		}
+	}
+
+	@Test
+	void closeProducerExceptionIsIgnored() throws Exception {
+		PulsarClientImpl pulsarClient = spy(
+				(PulsarClientImpl) PulsarClient.builder().serviceUrl("http://dummy").build());
+
+		ProducerBase<String> producer = mock(ProducerBase.class);
+		doReturn(CompletableFuture.failedFuture(new AlreadyClosedException("Already closed"))).when(producer)
+			.closeAsync();
+
+		MessageId messageId = DefaultImplementation.getDefaultImplementation().newMessageId(1, 1, 1);
+
+		given(producer.newMessage()).willAnswer((__) -> {
+			TypedMessageBuilderImpl<String> typedMessageBuilder = spy(
+					new TypedMessageBuilderImpl<>(producer, Schema.STRING));
+			willAnswer((___) -> CompletableFuture.completedFuture(messageId)).given(typedMessageBuilder).sendAsync();
+			return typedMessageBuilder;
+		});
+
+		doReturn(CompletableFuture.completedFuture(producer)).when(pulsarClient)
+			.createProducerAsync(any(), eq(Schema.STRING), isNull());
+
+		ReactiveMessageSender<String> reactiveSender = AdaptedReactivePulsarClientFactory.create(pulsarClient)
+			.messageSender(Schema.STRING)
+			.topic("my-topic")
+			.build();
+
+		StepVerifier.create(reactiveSender.sendOne(MessageSpec.of("test1"))).expectNext(messageId).verifyComplete();
+
+		verify(producer).closeAsync();
 	}
 
 }

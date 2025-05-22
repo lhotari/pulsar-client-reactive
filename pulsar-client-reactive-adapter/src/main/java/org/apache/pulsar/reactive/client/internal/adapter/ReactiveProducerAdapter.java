@@ -28,6 +28,8 @@ import org.apache.pulsar.client.api.ProducerBuilder;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.impl.ProducerBuilderImpl;
 import org.apache.pulsar.reactive.client.internal.api.PublisherTransformer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -35,6 +37,8 @@ import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
 class ReactiveProducerAdapter<T> {
+
+	private static final Logger log = LoggerFactory.getLogger(ReactiveProducerAdapter.class);
 
 	private final ProducerCache producerCache;
 
@@ -57,15 +61,15 @@ class ReactiveProducerAdapter<T> {
 	}
 
 	private Mono<Producer<T>> createProducerMono() {
-		return AdapterImplementationFactory.adaptPulsarFuture(
-				() -> this.producerBuilderFactory.apply(this.pulsarClientSupplier.get()).createAsync());
+		return AdapterImplementationFactory
+			.adaptPulsarFuture(() -> this.producerBuilderFactory.apply(this.pulsarClientSupplier.get()).createAsync());
 	}
 
 	private Mono<Tuple2<ProducerCacheKey, Mono<Producer<T>>>> createCachedProducerKeyAndMono() {
 		return Mono.fromCallable(() -> {
 			PulsarClient pulsarClient = this.pulsarClientSupplier.get();
 			ProducerBuilderImpl<T> producerBuilder = (ProducerBuilderImpl<T>) this.producerBuilderFactory
-					.apply(pulsarClient);
+				.apply(pulsarClient);
 			ProducerCacheKey cacheKey = new ProducerCacheKey(pulsarClient, producerBuilder.getConf().clone(),
 					producerBuilder.getSchema(), this.producerActionTransformerKey);
 			return Tuples.of(cacheKey, AdapterImplementationFactory.adaptPulsarFuture(producerBuilder::createAsync));
@@ -73,7 +77,10 @@ class ReactiveProducerAdapter<T> {
 	}
 
 	private Mono<Void> closeProducer(Producer<?> producer) {
-		return AdapterImplementationFactory.adaptPulsarFuture(producer::closeAsync);
+		return AdapterImplementationFactory.adaptPulsarFuture(producer::closeAsync).onErrorResume((t) -> {
+			log.debug("Error closing producer {}", producer, t);
+			return Mono.empty();
+		});
 	}
 
 	<R> Mono<R> usingProducer(BiFunction<Producer<T>, PublisherTransformer, Mono<R>> usingProducerAction) {

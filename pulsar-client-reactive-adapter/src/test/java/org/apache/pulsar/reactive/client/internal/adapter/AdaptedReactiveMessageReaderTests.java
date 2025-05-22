@@ -30,6 +30,7 @@ import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.PulsarClientException.AlreadyClosedException;
 import org.apache.pulsar.client.api.Range;
 import org.apache.pulsar.client.api.Reader;
 import org.apache.pulsar.client.api.Schema;
@@ -56,7 +57,7 @@ import static org.mockito.Mockito.verify;
 /**
  * Tests for {@link AdaptedReactiveMessageReader}.
  */
-class AdaptedReactiveMessageReaderTest {
+class AdaptedReactiveMessageReaderTests {
 
 	@Test
 	void readOne() throws Exception {
@@ -87,15 +88,23 @@ class AdaptedReactiveMessageReaderTest {
 		CompletableFuture<String> failedReader = new CompletableFuture<>();
 		failedReader.completeExceptionally(new RuntimeException("didn't match expected reader conf"));
 		doReturn(failedReader).when(pulsarClient).createReaderAsync(any(), eq(Schema.STRING));
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(eq(expectedReaderConf),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(eq(expectedReaderConf), eq(Schema.STRING));
 
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic").readerName("my-reader").subscriptionName("my-sub")
-				.generatedSubscriptionNamePrefix("my-prefix-").startAtSpec(StartAtSpec.ofLatestInclusive())
-				.receiverQueueSize(1).readCompacted(true).cryptoKeyReader(cryptoKeyReader)
-				.keyHashRanges(Collections.singletonList(new Range(2, 3)))
-				.cryptoFailureAction(ConsumerCryptoFailureAction.DISCARD).clone().build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.readerName("my-reader")
+			.subscriptionName("my-sub")
+			.generatedSubscriptionNamePrefix("my-prefix-")
+			.startAtSpec(StartAtSpec.ofLatestInclusive())
+			.receiverQueueSize(1)
+			.readCompacted(true)
+			.cryptoKeyReader(cryptoKeyReader)
+			.keyHashRanges(Collections.singletonList(new Range(2, 3)))
+			.cryptoFailureAction(ConsumerCryptoFailureAction.DISCARD)
+			.clone()
+			.build();
 
 		Message<String> messageRead = reactiveReader.readOne().block(Duration.ofSeconds(5));
 
@@ -111,18 +120,24 @@ class AdaptedReactiveMessageReaderTest {
 		Reader<String> reader = mock(Reader.class);
 		doReturn(CompletableFuture.completedFuture(null)).when(reader).closeAsync();
 		doReturn(CompletableFuture.completedFuture(true), CompletableFuture.completedFuture(true),
-				CompletableFuture.completedFuture(false)).when(reader).hasMessageAvailableAsync();
+				CompletableFuture.completedFuture(false))
+			.when(reader)
+			.hasMessageAvailableAsync();
 		Message<String> message1 = mock(Message.class);
 		Message<String> message2 = mock(Message.class);
 
 		doReturn(CompletableFuture.completedFuture(message1), CompletableFuture.completedFuture(message2),
-				new CompletableFuture<String>()).when(reader).readNextAsync();
+				new CompletableFuture<String>())
+			.when(reader)
+			.readNextAsync();
 
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(any(),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(any(), eq(Schema.STRING));
 
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic").build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.build();
 
 		StepVerifier.create(reactiveReader.readMany()).expectNext(message1).expectNext(message2).verifyComplete();
 
@@ -142,14 +157,39 @@ class AdaptedReactiveMessageReaderTest {
 		failedFuture.completeExceptionally(new PulsarClientException.InvalidMessageException("test"));
 		doReturn(failedFuture).when(reader).readNextAsync();
 
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(any(),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(any(), eq(Schema.STRING));
 
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic").build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.build();
 
 		StepVerifier.create(reactiveReader.readOne()).verifyError(PulsarClientException.InvalidMessageException.class);
 		StepVerifier.create(reactiveReader.readMany()).verifyError(PulsarClientException.InvalidMessageException.class);
+	}
+
+	@Test
+	void closeReaderExceptionIsIgnored() throws Exception {
+		PulsarClientImpl pulsarClient = spy(
+				(PulsarClientImpl) PulsarClient.builder().serviceUrl("http://dummy").build());
+
+		Reader<String> reader = mock(Reader.class);
+		doReturn(CompletableFuture.failedFuture(new AlreadyClosedException("Already closed"))).when(reader)
+			.closeAsync();
+		doReturn(CompletableFuture.completedFuture(false)).when(reader).hasMessageAvailableAsync();
+
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(any(), eq(Schema.STRING));
+
+		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
+			.messageReader(Schema.STRING)
+			.endOfStreamAction(EndOfStreamAction.COMPLETE)
+			.topic("my-topic")
+			.build();
+
+		StepVerifier.create(reactiveReader.readOne()).expectComplete().verify();
+		verify(reader).closeAsync();
 	}
 
 	@Test
@@ -160,21 +200,30 @@ class AdaptedReactiveMessageReaderTest {
 		Reader<String> reader = mock(Reader.class);
 		doReturn(CompletableFuture.completedFuture(null)).when(reader).closeAsync();
 		doReturn(CompletableFuture.completedFuture(true), CompletableFuture.completedFuture(true),
-				CompletableFuture.completedFuture(false)).when(reader).hasMessageAvailableAsync();
+				CompletableFuture.completedFuture(false))
+			.when(reader)
+			.hasMessageAvailableAsync();
 		Message<String> message1 = mock(Message.class);
 		Message<String> message2 = mock(Message.class);
 
 		doReturn(CompletableFuture.completedFuture(message1), CompletableFuture.completedFuture(message2),
-				new CompletableFuture<String>()).when(reader).readNextAsync();
+				new CompletableFuture<String>())
+			.when(reader)
+			.readNextAsync();
 
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(any(),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(any(), eq(Schema.STRING));
 
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic").endOfStreamAction(EndOfStreamAction.POLL).build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.endOfStreamAction(EndOfStreamAction.POLL)
+			.build();
 
-		StepVerifier.create(reactiveReader.readMany().timeout(Duration.ofMillis(100))).expectNext(message1)
-				.expectNext(message2).verifyError();
+		StepVerifier.create(reactiveReader.readMany().timeout(Duration.ofMillis(100)))
+			.expectNext(message1)
+			.expectNext(message2)
+			.verifyError();
 
 		verify(reader, times(3)).readNextAsync();
 	}
@@ -198,13 +247,15 @@ class AdaptedReactiveMessageReaderTest {
 		CompletableFuture<String> failedReader = new CompletableFuture<>();
 		failedReader.completeExceptionally(new RuntimeException("didn't match expected reader conf"));
 		doReturn(failedReader).when(pulsarClient).createReaderAsync(any(), eq(Schema.STRING));
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(eq(expectedReaderConf),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(eq(expectedReaderConf), eq(Schema.STRING));
 
 		Instant now = Instant.now();
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic").startAtSpec(StartAtSpec.ofInstant(now.minusSeconds(5)))
-				.build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.startAtSpec(StartAtSpec.ofInstant(now.minusSeconds(5)))
+			.build();
 
 		try (MockedStatic<Instant> mockedStatic = mockStatic(Instant.class)) {
 			mockedStatic.when(Instant::now).thenReturn(now);
@@ -227,12 +278,14 @@ class AdaptedReactiveMessageReaderTest {
 		Message<String> message = mock(Message.class);
 		doReturn(CompletableFuture.completedFuture(message)).when(reader).readNextAsync();
 
-		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient).createReaderAsync(any(),
-				eq(Schema.STRING));
+		doReturn(CompletableFuture.completedFuture(reader)).when(pulsarClient)
+			.createReaderAsync(any(), eq(Schema.STRING));
 
 		ReactiveMessageReader<String> reactiveReader = AdaptedReactivePulsarClientFactory.create(pulsarClient)
-				.messageReader(Schema.STRING).topic("my-topic")
-				.startAtSpec(StartAtSpec.ofInstant(Instant.now().plusSeconds(5))).build();
+			.messageReader(Schema.STRING)
+			.topic("my-topic")
+			.startAtSpec(StartAtSpec.ofInstant(Instant.now().plusSeconds(5)))
+			.build();
 
 		StepVerifier.create(reactiveReader.readOne()).verifyError(IllegalArgumentException.class);
 	}

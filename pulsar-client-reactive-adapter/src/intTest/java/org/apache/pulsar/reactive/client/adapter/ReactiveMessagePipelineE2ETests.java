@@ -36,8 +36,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.common.policies.data.SubscriptionStats;
+import org.apache.pulsar.common.policies.data.TopicStats;
 import org.apache.pulsar.reactive.client.api.MessageSpec;
 import org.apache.pulsar.reactive.client.api.MessageSpecBuilder;
 import org.apache.pulsar.reactive.client.api.ReactiveMessagePipeline;
@@ -54,7 +57,7 @@ import reactor.util.function.Tuples;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ReactiveMessagePipelineE2ETest {
+class ReactiveMessagePipelineE2ETests {
 
 	static final int KEYS_COUNT = 100;
 
@@ -70,21 +73,59 @@ class ReactiveMessagePipelineE2ETest {
 			ReactivePulsarClient reactivePulsarClient = AdaptedReactivePulsarClientFactory.create(pulsarClient);
 
 			ReactiveMessageSender<String> messageSender = reactivePulsarClient.messageSender(Schema.STRING)
-					.topic(topicName).build();
+				.topic(topicName)
+				.build();
 			messageSender.sendMany(Flux.range(1, 100).map(Object::toString).map(MessageSpec::of)).blockLast();
 
 			List<String> messages = Collections.synchronizedList(new ArrayList<>());
 			CountDownLatch latch = new CountDownLatch(100);
 
 			try (ReactiveMessagePipeline ignored = reactivePulsarClient.messageConsumer(Schema.STRING)
-					.subscriptionName("sub").topic(topicName).build().messagePipeline()
-					.messageHandler((message) -> Mono.fromRunnable(() -> {
-						messages.add(message.getValue());
-						latch.countDown();
-					})).build().start()) {
+				.subscriptionName("sub")
+				.topic(topicName)
+				.build()
+				.messagePipeline()
+				.messageHandler((message) -> Mono.fromRunnable(() -> {
+					messages.add(message.getValue());
+					latch.countDown();
+				}))
+				.build()
+				.start()) {
 				assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
 				assertThat(messages).isEqualTo(Flux.range(1, 100).map(Object::toString).collectList().block());
 			}
+		}
+	}
+
+	@Test
+	void shouldSupportWaitingForConsumingToStartAndStop() throws Exception {
+		try (PulsarClient pulsarClient = SingletonPulsarContainer.createPulsarClient();
+				PulsarAdmin pulsarAdmin = SingletonPulsarContainer.createPulsarAdmin()) {
+			String topicName = "test" + UUID.randomUUID();
+			ReactivePulsarClient reactivePulsarClient = AdaptedReactivePulsarClientFactory.create(pulsarClient);
+			ReactiveMessagePipeline pipeline = reactivePulsarClient.messageConsumer(Schema.STRING)
+				.subscriptionName("sub")
+				.topic(topicName)
+				.build()
+				.messagePipeline()
+				.messageHandler((message) -> Mono.empty())
+				.build()
+				.start();
+
+			// wait for consuming to start
+			pipeline.untilStarted().block(Duration.ofSeconds(5));
+			// there should be an existing subscription
+			List<String> subscriptions = pulsarAdmin.topics().getSubscriptions(topicName);
+			assertThat(subscriptions).as("subscription should be created").contains("sub");
+
+			// stop the pipeline
+			pipeline.stop();
+			// and wait for it to stop
+			pipeline.untilStopped().block(Duration.ofSeconds(5));
+			// there should be no consumers
+			TopicStats topicStats = pulsarAdmin.topics().getStats(topicName);
+			SubscriptionStats subStats = topicStats.getSubscriptions().get("sub");
+			assertThat(subStats.getConsumers()).isEmpty();
 		}
 	}
 
@@ -99,7 +140,8 @@ class ReactiveMessagePipelineE2ETest {
 			ReactivePulsarClient reactivePulsarClient = AdaptedReactivePulsarClientFactory.create(pulsarClient);
 
 			ReactiveMessageSender<Integer> messageSender = reactivePulsarClient.messageSender(Schema.INT32)
-					.topic(topicName).build();
+				.topic(topicName)
+				.build();
 
 			List<MessageSpec<Integer>> messageSpecs = generateRandomOrderedMessagesWhereSingleKeyIsOrdered(
 					messageOrderScenario);
@@ -109,30 +151,35 @@ class ReactiveMessagePipelineE2ETest {
 			ConcurrentMap<Integer, List<Integer>> messages = new ConcurrentHashMap<>();
 			CountDownLatch latch = new CountDownLatch(messageSpecs.size());
 
-			List<Integer> orderedSequence = IntStream.rangeClosed(1, ITEMS_PER_KEY_COUNT).boxed()
-					.collect(Collectors.toList());
+			List<Integer> orderedSequence = IntStream.rangeClosed(1, ITEMS_PER_KEY_COUNT)
+				.boxed()
+				.collect(Collectors.toList());
 
 			ReactiveMessagePipelineBuilder.OneByOneMessagePipelineBuilder<Integer> reactiveMessageHandlerBuilder = reactivePulsarClient
-					.messageConsumer(Schema.INT32).subscriptionName("sub").topic(topicName).build().messagePipeline()
-					.messageHandler((message) -> {
-						Mono<Void> messageHandler = Mono.fromRunnable(() -> {
-							Integer keyId = Integer.parseInt(message.getProperty("keyId"));
-							messages.compute(keyId, (k, list) -> {
-								if (list == null) {
-									list = new ArrayList<>();
-								}
-								list.add(message.getValue());
-								return list;
-							});
-							latch.countDown();
+				.messageConsumer(Schema.INT32)
+				.subscriptionName("sub")
+				.topic(topicName)
+				.build()
+				.messagePipeline()
+				.messageHandler((message) -> {
+					Mono<Void> messageHandler = Mono.fromRunnable(() -> {
+						Integer keyId = Integer.parseInt(message.getProperty("keyId"));
+						messages.compute(keyId, (k, list) -> {
+							if (list == null) {
+								list = new ArrayList<>();
+							}
+							list.add(message.getValue());
+							return list;
 						});
-						if (messageOrderScenario != MessageOrderScenario.NO_PARALLEL) {
-							// add delay which would lead to the execution timeout unless
-							// messages are handled in parallel
-							messageHandler = Mono.delay(Duration.ofMillis(5)).then(messageHandler);
-						}
-						return messageHandler;
+						latch.countDown();
 					});
+					if (messageOrderScenario != MessageOrderScenario.NO_PARALLEL) {
+						// add delay which would lead to the execution timeout unless
+						// messages are handled in parallel
+						messageHandler = Mono.delay(Duration.ofMillis(5)).then(messageHandler);
+					}
+					return messageHandler;
+				});
 			if (messageOrderScenario != MessageOrderScenario.NO_PARALLEL) {
 				reactiveMessageHandlerBuilder.concurrency(KEYS_COUNT).useKeyOrderedProcessing();
 			}
@@ -165,8 +212,13 @@ class ReactiveMessagePipelineE2ETest {
 				}
 				return Tuples.of(keyId, messageSpecBuilder.build());
 			});
-		}).collectMultimap(Tuple2::getT1, Tuple2::getT2).map(Map::values).block().stream().map(LinkedBlockingQueue::new)
-				.collect(Collectors.toList());
+		})
+			.collectMultimap(Tuple2::getT1, Tuple2::getT2)
+			.map(Map::values)
+			.block()
+			.stream()
+			.map(LinkedBlockingQueue::new)
+			.collect(Collectors.toList());
 
 		List<MessageSpec<Integer>> messageSpecs = new ArrayList<>(KEYS_COUNT * ITEMS_PER_KEY_COUNT);
 		while (messageSpecs.size() < KEYS_COUNT * ITEMS_PER_KEY_COUNT) {

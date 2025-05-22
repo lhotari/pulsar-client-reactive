@@ -28,6 +28,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -38,6 +39,7 @@ import org.apache.pulsar.client.api.Message;
 import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.internal.DefaultImplementation;
 import org.apache.pulsar.common.api.EncryptionContext;
+import org.apache.pulsar.reactive.client.internal.api.InternalConsumerListener;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -49,18 +51,21 @@ import reactor.util.retry.Retry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class ReactiveMessagePipelineTest {
+class ReactiveMessagePipelineTests {
 
 	@Test
 	void startStopPipeline() throws Exception {
 		AtomicInteger subscriptions = new AtomicInteger();
 		AtomicInteger cancellations = new AtomicInteger();
 		Function<Mono<Void>, Publisher<Void>> transformer = (mono) -> mono
-				.doOnSubscribe((s) -> subscriptions.incrementAndGet()).doOnCancel(cancellations::incrementAndGet);
+			.doOnSubscribe((s) -> subscriptions.incrementAndGet())
+			.doOnCancel(cancellations::incrementAndGet);
 		try (ReactiveMessagePipeline pipeline = new TestConsumer(Integer.MAX_VALUE).messagePipeline()
-				.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then()).transformPipeline(transformer)
-				.build()) {
+			.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then())
+			.transformPipeline(transformer)
+			.build()) {
 			assertThat(pipeline.isRunning()).isFalse();
 
 			// Stopping not started
@@ -101,10 +106,12 @@ class ReactiveMessagePipelineTest {
 		AtomicInteger subscriptions = new AtomicInteger();
 		AtomicInteger cancellations = new AtomicInteger();
 		Function<Mono<Void>, Publisher<Void>> transformer = (mono) -> mono
-				.doOnSubscribe((s) -> subscriptions.incrementAndGet()).doOnCancel(cancellations::incrementAndGet);
+			.doOnSubscribe((s) -> subscriptions.incrementAndGet())
+			.doOnCancel(cancellations::incrementAndGet);
 		try (ReactiveMessagePipeline pipeline = new TestConsumer(Integer.MAX_VALUE).messagePipeline()
-				.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then()).transformPipeline(transformer)
-				.build()) {
+			.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then())
+			.transformPipeline(transformer)
+			.build()) {
 			pipeline.start();
 			assertThatIllegalStateException().isThrownBy(pipeline::start);
 			assertThat(pipeline.isRunning()).isTrue();
@@ -118,10 +125,12 @@ class ReactiveMessagePipelineTest {
 		AtomicInteger subscriptions = new AtomicInteger();
 		AtomicInteger cancellations = new AtomicInteger();
 		Function<Mono<Void>, Publisher<Void>> transformer = (mono) -> mono
-				.doOnSubscribe((s) -> subscriptions.incrementAndGet()).doOnCancel(cancellations::incrementAndGet);
+			.doOnSubscribe((s) -> subscriptions.incrementAndGet())
+			.doOnCancel(cancellations::incrementAndGet);
 		ReactiveMessagePipeline pipeline = new TestConsumer(Integer.MAX_VALUE).messagePipeline()
-				.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then()).transformPipeline(transformer)
-				.build();
+			.messageHandler((message) -> Mono.delay(Duration.ofSeconds(1)).then())
+			.transformPipeline(transformer)
+			.build();
 
 		pipeline.close();
 		assertThat(pipeline.isRunning()).isFalse();
@@ -149,8 +158,8 @@ class ReactiveMessagePipelineTest {
 		int numMessages = 10;
 		TestConsumer testConsumer = new TestConsumer(numMessages);
 		CountDownLatch latch = new CountDownLatch(numMessages);
-		Function<Message<String>, Publisher<Void>> messageHandler = (message) -> Mono.empty().then()
-				.doFinally((__) -> latch.countDown());
+		Function<Message<String>, Publisher<Void>> messageHandler = (
+				message) -> Mono.empty().then().doFinally((__) -> latch.countDown());
 		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler).build()) {
 			pipeline.start();
 			assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
@@ -159,14 +168,36 @@ class ReactiveMessagePipelineTest {
 	}
 
 	@Test
+	void pipelineUntilStartedAndStopped() throws Exception {
+		int numMessages = 10;
+		Duration subscriptionDelay = Duration.ofSeconds(1);
+		TestConsumer testConsumer = new TestConsumer(numMessages, subscriptionDelay);
+		CountDownLatch latch = new CountDownLatch(numMessages);
+		Function<Message<String>, Publisher<Void>> messageHandler = (
+				message) -> Mono.empty().then().doFinally((__) -> latch.countDown());
+		ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler).build();
+		pipeline.start();
+		// timeout should occur since subscription delay is 1 second in TestConsumer
+		assertThatThrownBy(() -> pipeline.untilStarted().block(Duration.ofMillis(100)))
+			.isInstanceOf(IllegalStateException.class)
+			.hasCauseInstanceOf(TimeoutException.class);
+		// now wait for consuming to start
+		pipeline.untilStarted().block(Duration.ofSeconds(2));
+		assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+		// now wait for consuming to stop
+		pipeline.stop().untilStopped().block(Duration.ofSeconds(1));
+	}
+
+	@Test
 	void streamingHandler() throws Exception {
 		int numMessages = 10;
 		TestConsumer testConsumer = new TestConsumer(numMessages);
 		CountDownLatch latch = new CountDownLatch(numMessages);
-		Function<Flux<Message<String>>, Publisher<MessageResult<Void>>> messageHandler = (messageFlux) -> messageFlux
-				.map(MessageResult::acknowledge).doOnNext((__) -> latch.countDown());
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().streamingMessageHandler(messageHandler)
-				.build()) {
+		Function<Flux<Message<String>>, Publisher<MessageResult<Void>>> messageHandler = (
+				messageFlux) -> messageFlux.map(MessageResult::acknowledge).doOnNext((__) -> latch.countDown());
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.streamingMessageHandler(messageHandler)
+			.build()) {
 			pipeline.start();
 			assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
 		}
@@ -180,9 +211,10 @@ class ReactiveMessagePipelineTest {
 
 	@Test
 	void bothMessageHandlerAndStreamingHandler() {
-		assertThatIllegalStateException()
-				.isThrownBy(() -> new TestConsumer(0).messagePipeline().messageHandler((m) -> Mono.empty())
-						.streamingMessageHandler((messageFlux) -> messageFlux.map(MessageResult::acknowledge)).build());
+		assertThatIllegalStateException().isThrownBy(() -> new TestConsumer(0).messagePipeline()
+			.messageHandler((m) -> Mono.empty())
+			.streamingMessageHandler((messageFlux) -> messageFlux.map(MessageResult::acknowledge))
+			.build());
 	}
 
 	@Test
@@ -203,8 +235,10 @@ class ReactiveMessagePipelineTest {
 			}
 			return Mono.delay(delay).then();
 		});
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler)
-				.handlingTimeout(Duration.ofMillis(5)).build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler(messageHandler)
+			.handlingTimeout(Duration.ofMillis(5))
+			.build()) {
 			pipeline.start();
 			assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
 			// 9 messages should have been acked
@@ -218,20 +252,44 @@ class ReactiveMessagePipelineTest {
 	}
 
 	@Test
+	void negativeAcknowledgement() throws Exception {
+		int numMessages = 10;
+		TestConsumer testConsumer = new TestConsumer(numMessages);
+		CountDownLatch latch = new CountDownLatch(1);
+		testConsumer.setFinishedCallback(latch::countDown);
+		Function<Message<String>, Publisher<Void>> messageHandler = (message) -> {
+			if (message.getValue().equals("5")) {
+				throw new RuntimeException("Handling message 5 failed");
+			}
+			return Mono.empty();
+		};
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler).build()) {
+			pipeline.start();
+			assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
+			// 9 messages should have been acked
+			assertThat(testConsumer.getAcknowledgedMessages()).hasSize(9);
+			// 1 message should have been nacked
+			assertThat(testConsumer.getNackedMessages()).hasSize(1);
+		}
+	}
+
+	@Test
 	void errorLogger() throws Exception {
 		int numMessages = 10;
 		TestConsumer testConsumer = new TestConsumer(numMessages);
 		CountDownLatch latch = new CountDownLatch(numMessages);
 		Function<Message<String>, Publisher<Void>> messageHandler = (message) -> Mono
-				.error(new RuntimeException("error"));
+			.error(new RuntimeException("error"));
 		BiConsumer<Message<String>, Throwable> errorLogger = (message, throwable) -> {
 			int messageValue = Integer.parseInt(message.getValue());
 			if (throwable.getMessage().equals("error") && messageValue >= 0 && messageValue < numMessages) {
 				latch.countDown();
 			}
 		};
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler)
-				.errorLogger(errorLogger).build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler(messageHandler)
+			.errorLogger(errorLogger)
+			.build()) {
 			pipeline.start();
 			assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
 		}
@@ -247,7 +305,9 @@ class ReactiveMessagePipelineTest {
 		InflightCounter inflightCounterNoConcurrency = new InflightCounter();
 		CountDownLatch latch1 = new CountDownLatch(numMessages);
 		Function<Message<String>, Publisher<Void>> messageHandler = (message) -> Mono.delay(Duration.ofMillis(100))
-				.transform(inflightCounterNoConcurrency::transform).then().doFinally((__) -> latch1.countDown());
+			.transform(inflightCounterNoConcurrency::transform)
+			.then()
+			.doFinally((__) -> latch1.countDown());
 		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler).build()) {
 			pipeline.start();
 			assertThat(latch1.await(150, TimeUnit.MILLISECONDS)).isFalse();
@@ -258,9 +318,13 @@ class ReactiveMessagePipelineTest {
 		InflightCounter inflightCounterConcurrency = new InflightCounter();
 		CountDownLatch latch2 = new CountDownLatch(numMessages);
 		Function<Message<String>, Publisher<Void>> messageHandler2 = (message) -> Mono.delay(Duration.ofMillis(100))
-				.transform(inflightCounterConcurrency::transform).then().doFinally((__) -> latch2.countDown());
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler2)
-				.concurrency(1000).build()) {
+			.transform(inflightCounterConcurrency::transform)
+			.then()
+			.doFinally((__) -> latch2.countDown());
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler(messageHandler2)
+			.concurrency(1000)
+			.build()) {
 			pipeline.start();
 			assertThat(latch2.await(1, TimeUnit.SECONDS)).isTrue();
 		}
@@ -285,7 +349,9 @@ class ReactiveMessagePipelineTest {
 		// Verify that without a grouping function, the messages are not processed in
 		// order.
 		try (ReactiveMessagePipeline pipeline = new TestConsumer(numMessages).messagePipeline()
-				.messageHandler(messageHandler).concurrency(10).build()) {
+			.messageHandler(messageHandler)
+			.concurrency(10)
+			.build()) {
 			pipeline.start();
 			assertThat(queue.poll(5, TimeUnit.SECONDS)).isNotEqualTo("0");
 
@@ -300,7 +366,10 @@ class ReactiveMessagePipelineTest {
 		// in order.
 		MessageGroupingFunction groupingFunction = (message, numberOfGroups) -> 0;
 		try (ReactiveMessagePipeline pipeline = new TestConsumer(numMessages).messagePipeline()
-				.messageHandler(messageHandler).concurrency(10).groupOrderedProcessing(groupingFunction).build()) {
+			.messageHandler(messageHandler)
+			.concurrency(10)
+			.groupOrderedProcessing(groupingFunction)
+			.build()) {
 			pipeline.start();
 			assertThat(queue.poll(5, TimeUnit.SECONDS)).isEqualTo("0");
 		}
@@ -316,10 +385,15 @@ class ReactiveMessagePipelineTest {
 
 		CountDownLatch latch = new CountDownLatch(numMessages);
 		Function<Message<String>, Publisher<Void>> messageHandler2 = (message) -> Mono.delay(Duration.ofMillis(2))
-				.doOnNext((it) -> latch.countDown()).then().transform(inflightCounter::transform);
+			.doOnNext((it) -> latch.countDown())
+			.then()
+			.transform(inflightCounter::transform);
 
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler(messageHandler2)
-				.concurrency(1000).maxInflight(maxInFlight).build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler(messageHandler2)
+			.concurrency(1000)
+			.maxInflight(maxInFlight)
+			.build()) {
 			pipeline.start();
 			assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
 			assertThat(inflightCounter.getMax()).isEqualTo(maxInFlight);
@@ -345,8 +419,9 @@ class ReactiveMessagePipelineTest {
 			}
 		};
 
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler((__) -> Mono.empty())
-				.build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler((__) -> Mono.empty())
+			.build()) {
 			pipeline.start();
 			// The default pipeline first retry is 5 seconds
 			assertThat(latch.await(8, TimeUnit.SECONDS)).isTrue();
@@ -374,8 +449,10 @@ class ReactiveMessagePipelineTest {
 		};
 
 		Retry retrySpec = Retry.fixedDelay(1, Duration.ofMillis(1));
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler((__) -> Mono.empty())
-				.pipelineRetrySpec(retrySpec).build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler((__) -> Mono.empty())
+			.pipelineRetrySpec(retrySpec)
+			.build()) {
 			pipeline.start();
 			// Wait less than the default retry backoff.
 			assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
@@ -398,8 +475,10 @@ class ReactiveMessagePipelineTest {
 				latch.countDown();
 			}
 		});
-		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline().messageHandler((__) -> Mono.empty())
-				.transformPipeline(transformer).build()) {
+		try (ReactiveMessagePipeline pipeline = testConsumer.messagePipeline()
+			.messageHandler((__) -> Mono.empty())
+			.transformPipeline(transformer)
+			.build()) {
 			pipeline.start();
 			assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
 		}
@@ -425,10 +504,17 @@ class ReactiveMessagePipelineTest {
 
 		private final int numMessages;
 
+		private final Duration subscriptionDelay;
+
 		private volatile Runnable finishedCallback;
 
 		TestConsumer(int numMessages) {
+			this(numMessages, null);
+		}
+
+		TestConsumer(int numMessages, Duration subscriptionDelay) {
 			this.numMessages = numMessages;
+			this.subscriptionDelay = subscriptionDelay;
 		}
 
 		private final List<MessageId> acknowledgedMessages = new CopyOnWriteArrayList<>();
@@ -441,9 +527,13 @@ class ReactiveMessagePipelineTest {
 
 		@Override
 		public <R> Flux<R> consumeMany(Function<Flux<Message<String>>, Publisher<MessageResult<R>>> messageHandler) {
-			return Flux.defer(() -> {
-				Flux<Message<String>> messages = Flux.range(0, this.numMessages).map(Object::toString)
-						.map(TestMessage::new);
+			Flux<R> flux = Flux.deferContextual((contextView) -> {
+				Optional<InternalConsumerListener> internalConsumerListener = contextView
+					.getOrEmpty(InternalConsumerListener.class);
+				internalConsumerListener.ifPresent((listener) -> listener.onConsumerCreated(this));
+				Flux<Message<String>> messages = Flux.range(0, this.numMessages)
+					.map(Object::toString)
+					.map(TestMessage::new);
 				return Flux.from(messageHandler.apply(messages)).doOnNext((result) -> {
 					if (result.isAcknowledgeMessage()) {
 						this.acknowledgedMessages.add(result.getMessageId());
@@ -455,8 +545,15 @@ class ReactiveMessagePipelineTest {
 					if (this.finishedCallback != null) {
 						this.finishedCallback.run();
 					}
+					internalConsumerListener.ifPresent((listener) -> listener.onConsumerClosed(this));
 				});
 			});
+			if (this.subscriptionDelay != null) {
+				return flux.delaySubscription(this.subscriptionDelay);
+			}
+			else {
+				return flux;
+			}
 		}
 
 		List<MessageId> getAcknowledgedMessages() {
@@ -479,8 +576,8 @@ class ReactiveMessagePipelineTest {
 
 		TestMessage(String value) {
 			this.value = value;
-			this.messageId = DefaultImplementation.getDefaultImplementation().newMessageId(123456L,
-					MESSAGE_ID_GENERATOR.incrementAndGet(), -1);
+			this.messageId = DefaultImplementation.getDefaultImplementation()
+				.newMessageId(123456L, MESSAGE_ID_GENERATOR.incrementAndGet(), -1);
 		}
 
 		@Override

@@ -21,6 +21,7 @@ package org.apache.pulsar.reactive.client.internal.api;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -67,6 +68,10 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 
 	private final MessageGroupingFunction groupingFunction;
 
+	private final AtomicReference<InternalConsumerListenerImpl> consumerListener = new AtomicReference<>();
+
+	private final AtomicReference<CompletableFuture<Void>> pipelineStoppedFuture = new AtomicReference<>();
+
 	DefaultReactiveMessagePipeline(ReactiveMessageConsumer<T> messageConsumer,
 			Function<Message<T>, Publisher<Void>> messageHandler, BiConsumer<Message<T>, Throwable> errorLogger,
 			Retry pipelineRetrySpec, Duration handlingTimeout, Function<Mono<Void>, Publisher<Void>> transformer,
@@ -80,8 +85,17 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 		this.groupingFunction = groupingFunction;
 		this.concurrency = concurrency;
 		this.maxInflight = maxInflight;
-		this.pipeline = messageConsumer.consumeMany(this::createMessageConsumer).then().transform(transformer)
-				.transform(this::decoratePipeline);
+		this.pipeline = messageConsumer.consumeMany(this::createMessageConsumer)
+			.then()
+			.transform(transformer)
+			.transform(this::decoratePipeline)
+			.doFinally((signalType) -> {
+				CompletableFuture<Void> f = this.pipelineStoppedFuture.get();
+				if (f != null) {
+					f.complete(null);
+				}
+			})
+			.doFirst(() -> this.pipelineStoppedFuture.set(new CompletableFuture<>()));
 	}
 
 	private Mono<Void> decorateMessageHandler(Mono<Void> messageHandler) {
@@ -102,7 +116,7 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 			Mono<Void> finalPipeline = pipeline;
 			pipeline = Mono.using(() -> new InflightLimiter(this.maxInflight),
 					(inflightLimiter) -> (finalPipeline)
-							.contextWrite(Context.of(INFLIGHT_LIMITER_CONTEXT_KEY, inflightLimiter)),
+						.contextWrite(Context.of(INFLIGHT_LIMITER_CONTEXT_KEY, inflightLimiter)),
 					InflightLimiter::dispose);
 		}
 		if (this.pipelineRetrySpec != null) {
@@ -134,28 +148,31 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 			}
 		}
 		else {
-			return Flux.from(Objects.requireNonNull(this.streamingMessageHandler,
-					"streamingMessageHandler or messageHandler must be set").apply(messageFlux));
+			return Flux.from(Objects
+				.requireNonNull(this.streamingMessageHandler, "streamingMessageHandler or messageHandler must be set")
+				.apply(messageFlux));
 		}
 	}
 
 	private Mono<MessageResult<Void>> handleMessage(Message<T> message) {
-		return Mono.from(this.messageHandler.apply(message)).transform(this::decorateMessageHandler)
-				.thenReturn(MessageResult.acknowledge(message.getMessageId())).onErrorResume((throwable) -> {
-					if (this.errorLogger != null) {
-						try {
-							this.errorLogger.accept(message, throwable);
-						}
-						catch (Exception ex) {
-							LOG.error("Error in calling error logger", ex);
-						}
+		return Mono.defer(() -> Mono.from(this.messageHandler.apply(message)))
+			.transform(this::decorateMessageHandler)
+			.thenReturn(MessageResult.acknowledge(message.getMessageId()))
+			.onErrorResume((throwable) -> {
+				if (this.errorLogger != null) {
+					try {
+						this.errorLogger.accept(message, throwable);
 					}
-					else {
-						LOG.error("Message handling for message id {} failed.", message.getMessageId(), throwable);
+					catch (Exception ex) {
+						LOG.error("Error in calling error logger", ex);
 					}
-					// TODO: nack doesn't work for batch messages due to Pulsar bugs
-					return Mono.just(MessageResult.negativeAcknowledge(message.getMessageId()));
-				});
+				}
+				else {
+					LOG.error("Message handling for message id {} failed.", message.getMessageId(), throwable);
+				}
+				// TODO: nack doesn't work for batch messages due to Pulsar bugs
+				return Mono.just(MessageResult.negativeAcknowledge(message.getMessageId()));
+			});
 	}
 
 	@Override
@@ -163,12 +180,24 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 		if (this.killSwitch.get() != null) {
 			throw new IllegalStateException("Message handler is already running.");
 		}
-		Disposable disposable = this.pipeline.subscribe(null, this::logError, this::logUnexpectedCompletion);
+		InternalConsumerListenerImpl consumerListener = new InternalConsumerListenerImpl();
+		Disposable disposable = this.pipeline.contextWrite(Context.of(InternalConsumerListener.class, consumerListener))
+			.subscribe(null, this::logError, this::logUnexpectedCompletion);
 		if (!this.killSwitch.compareAndSet(null, disposable)) {
 			disposable.dispose();
 			throw new IllegalStateException("Message handler was already running.");
 		}
+		this.consumerListener.set(consumerListener);
 		return this;
+	}
+
+	@Override
+	public Mono<Void> untilStarted() {
+		if (!isRunning()) {
+			throw new IllegalStateException("Pipeline isn't running. Call start first.");
+		}
+		InternalConsumerListenerImpl internalConsumerListener = this.consumerListener.get();
+		return internalConsumerListener.waitForConsumerCreated();
 	}
 
 	private void logError(Throwable throwable) {
@@ -191,8 +220,43 @@ class DefaultReactiveMessagePipeline<T> implements ReactiveMessagePipeline {
 	}
 
 	@Override
+	public Mono<Void> untilStopped() {
+		if (isRunning()) {
+			throw new IllegalStateException("Pipeline is running. Call stop first.");
+		}
+		CompletableFuture<Void> f = this.pipelineStoppedFuture.get();
+		if (f != null) {
+			return Mono.fromFuture(f, true);
+		}
+		else {
+			return Mono.empty();
+		}
+	}
+
+	@Override
 	public boolean isRunning() {
 		return this.killSwitch.get() != null;
+	}
+
+	private static final class InternalConsumerListenerImpl implements InternalConsumerListener {
+
+		private final CompletableFuture<Void> createdFuture;
+
+		private InternalConsumerListenerImpl() {
+			this.createdFuture = new CompletableFuture<>();
+		}
+
+		@Override
+		public void onConsumerCreated(Object nativeConsumer) {
+			if (!this.createdFuture.isDone()) {
+				this.createdFuture.complete(null);
+			}
+		}
+
+		Mono<Void> waitForConsumerCreated() {
+			return Mono.fromFuture(this.createdFuture, true);
+		}
+
 	}
 
 }

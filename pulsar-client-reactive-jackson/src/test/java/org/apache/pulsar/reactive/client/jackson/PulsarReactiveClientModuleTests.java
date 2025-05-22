@@ -35,6 +35,7 @@ import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.ProducerAccessMode;
 import org.apache.pulsar.client.api.ProducerCryptoFailureAction;
 import org.apache.pulsar.client.api.Range;
+import org.apache.pulsar.client.api.RedeliveryBackoff;
 import org.apache.pulsar.client.api.RegexSubscriptionMode;
 import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionMode;
@@ -57,10 +58,10 @@ import reactor.core.scheduler.Scheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class PulsarReactiveClientModuleTest {
+class PulsarReactiveClientModuleTests {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new PulsarReactiveClientModule())
-			.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+		.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
 	@ParameterizedTest
 	@ValueSource(classes = { ReactiveMessageConsumerSpec.class, ImmutableReactiveMessageConsumerSpec.class,
@@ -91,6 +92,12 @@ class PulsarReactiveClientModuleTest {
 				+ "'acknowledgeAsynchronously': true,"
 				+ "'acknowledgeScheduler': 'boundedElastic',"
 				+ "'negativeAckRedeliveryDelay': 30,"
+				+ "'negativeAckRedeliveryBackoff': {"
+				+ "    'className': '" + ExponentialRedeliveryBackoff.class.getName() + "'"
+				+ "},"
+				+ "'ackTimeoutRedeliveryBackoff': {"
+				+ "    'className': '" + ExponentialRedeliveryBackoff.class.getName() + "'"
+				+ "},"
 				+ "'deadLetterPolicy': {"
 				+ "    'maxRedeliverCount': 1,"
 				+ "    'retryLetterTopic': 'my-retry-topic',"
@@ -103,7 +110,7 @@ class PulsarReactiveClientModuleTest {
 				+ "'autoUpdatePartitions': true,"
 				+ "'autoUpdatePartitionsInterval': 30,"
 				+ "'cryptoKeyReader': {"
-				+ "    'className': 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader',"
+				+ "    'className': '" + TestCryptoKeyReader.class.getName() + "',"
 				+ "    'args': {'dummy': 'my-dummy'}"
 				+ "},"
 				+ "'cryptoFailureAction': 'FAIL',"
@@ -139,6 +146,8 @@ class PulsarReactiveClientModuleTest {
 		assertThat(spec.getAcknowledgeAsynchronously()).isTrue();
 		assertThat(spec.getAcknowledgeScheduler().toString()).isEqualTo("Schedulers.boundedElastic()");
 		assertThat(spec.getNegativeAckRedeliveryDelay()).hasMillis(30_000);
+		assertThat(spec.getNegativeAckRedeliveryBackoff()).isEqualTo(new ExponentialRedeliveryBackoff());
+		assertThat(spec.getAckTimeoutRedeliveryBackoff()).isEqualTo(new ExponentialRedeliveryBackoff());
 		assertThat(spec.getDeadLetterPolicy().getMaxRedeliverCount()).isEqualTo(1);
 		assertThat(spec.getDeadLetterPolicy().getDeadLetterTopic()).isEqualTo("my-dlq");
 		assertThat(spec.getDeadLetterPolicy().getRetryLetterTopic()).isEqualTo("my-retry-topic");
@@ -187,6 +196,12 @@ class PulsarReactiveClientModuleTest {
 				+ "  'acknowledgeAsynchronously' : true,\n"
 				+ "  'acknowledgeScheduler' : 'boundedElastic',\n"
 				+ "  'negativeAckRedeliveryDelay' : 30.000000000,\n"
+				+ "  'negativeAckRedeliveryBackoff' : {\n"
+				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTests$ExponentialRedeliveryBackoff'\n"
+				+ "  },\n"
+				+ "  'ackTimeoutRedeliveryBackoff' : {\n"
+				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTests$ExponentialRedeliveryBackoff'\n"
+				+ "  },\n"
 				+ "  'deadLetterPolicy' : {\n"
 				+ "    'maxRedeliverCount' : 1,\n"
 				+ "    'retryLetterTopic' : 'my-retry-topic',\n"
@@ -199,7 +214,7 @@ class PulsarReactiveClientModuleTest {
 				+ "  'autoUpdatePartitions' : true,\n"
 				+ "  'autoUpdatePartitionsInterval' : 30.000000000,\n"
 				+ "  'cryptoKeyReader' : {\n"
-				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader'\n"
+				+ "    'className' : '" + TestCryptoKeyReader.class.getName() + "'\n"
 				+ "  },\n"
 				+ "  'cryptoFailureAction' : 'FAIL',\n"
 				+ "  'maxPendingChunkedMessage' : 42,\n"
@@ -240,7 +255,7 @@ class PulsarReactiveClientModuleTest {
 				+ "    'end': 43"
 				+ "}],"
 				+ "'cryptoKeyReader': {"
-				+ "    'className': 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader',"
+				+ "    'className': '" + TestCryptoKeyReader.class.getName() + "',"
 				+ "    'args': {'dummy': 'my-dummy'}"
 				+ "},"
 				+ "'cryptoFailureAction': 'FAIL'"
@@ -278,7 +293,7 @@ class PulsarReactiveClientModuleTest {
 				+ "    'end' : 43\n"
 				+ "  } ],\n"
 				+ "  'cryptoKeyReader' : {\n"
-				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader'\n"
+				+ "    'className' : '" + TestCryptoKeyReader.class.getName() + "'\n"
 				+ "  },\n"
 				+ "  'cryptoFailureAction' : 'FAIL'\n"
 				+ "}").replaceAll("'", "\"");
@@ -325,7 +340,7 @@ class PulsarReactiveClientModuleTest {
 				+ "'hashingScheme': 'JavaStringHash',"
 				+ "'cryptoFailureAction': 'FAIL',"
 				+ "'messageRouter': {"
-				+ "    'className': 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestMessageRouter',"
+				+ "    'className': '" + TestMessageRouter.class.getName() + "',"
 				+ "    'args': {'dummy': 'my-dummy'}"
 				+ "},"
 				+ "'batchingMaxPublishDelay': 30,"
@@ -338,7 +353,7 @@ class PulsarReactiveClientModuleTest {
 				+ "},"
 				+ "'chunkingEnabled': true,"
 				+ "'cryptoKeyReader': {"
-				+ "    'className': 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader',"
+				+ "    'className': '" + TestCryptoKeyReader.class.getName() + "',"
 				+ "    'args': {'dummy': 'my-dummy'}"
 				+ "},"
 				+ "'encryptionKeys': ['my-encryption-key'],"
@@ -403,8 +418,7 @@ class PulsarReactiveClientModuleTest {
 				+ "  'hashingScheme' : 'JavaStringHash',\n"
 				+ "  'cryptoFailureAction' : 'FAIL',\n"
 				+ "  'messageRouter' : {\n"
-				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson"
-				+ ".PulsarReactiveClientModuleTest$TestMessageRouter'\n"
+				+ "    'className' : '" + TestMessageRouter.class.getName() + "'\n"
 				+ "  },\n"
 				+ "  'batchingMaxPublishDelay' : 30.000000000,\n"
 				+ "  'roundRobinRouterBatchingPartitionSwitchFrequency' : 42,\n"
@@ -414,7 +428,7 @@ class PulsarReactiveClientModuleTest {
 				+ "  'batcherBuilder' : { },\n"
 				+ "  'chunkingEnabled' : true,\n"
 				+ "  'cryptoKeyReader' : {\n"
-				+ "    'className' : 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader'\n"
+				+ "    'className' : '" + TestCryptoKeyReader.class.getName() + "'\n"
 				+ "  },\n"
 				+ "  'encryptionKeys' : [ 'my-encryption-key' ],\n"
 				+ "  'compressionType' : 'LZ4',\n"
@@ -445,7 +459,7 @@ class PulsarReactiveClientModuleTest {
 	@Test
 	void shouldSerializeCustomKeySharedPolicy() throws Exception {
 		String json = MAPPER.writeValueAsString(new TestKeySharedPolicy());
-		String expected = "\"org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestKeySharedPolicy\"";
+		String expected = "\"org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTests$TestKeySharedPolicy\"";
 		assertThat(json).isEqualTo(expected);
 	}
 
@@ -468,7 +482,7 @@ class PulsarReactiveClientModuleTest {
 	@Test
 	void shouldSerializeCustomScheduler() throws Exception {
 		String json = MAPPER.writeValueAsString(new TestScheduler());
-		String expected = "\"org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestScheduler\"";
+		String expected = "\"org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTests$TestScheduler\"";
 		assertThat(json).isEqualTo(expected);
 	}
 
@@ -495,17 +509,36 @@ class PulsarReactiveClientModuleTest {
 	}
 
 	@Test
+	void shouldSerDeserExponentialRedeliveryBackoff() throws Exception {
+		ExponentialRedeliveryBackoff backoff = MAPPER.readValue("{}", ExponentialRedeliveryBackoff.class);
+		String json = MAPPER.writeValueAsString(backoff);
+		assertThat(json).isEqualTo("{\"className\":\"org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTests$ExponentialRedeliveryBackoff\"}");
+	}
+
+	@Test
 	void shouldSerDeserCryptoKeyReader() throws Exception {
 		// @formatter:off
 		String content = ("{"
-				+ "    'className': 'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader',"
+				+ "    'className': '" + TestCryptoKeyReader.class.getName() + "',"
 				+ "    'args': {'dummy': 'my-dummy'}"
 				+ "}").replaceAll("'", "\"");
 		// @formatter:on
 		CryptoKeyReader cryptoKeyReader = MAPPER.readValue(content, CryptoKeyReader.class);
 		String json = MAPPER.writeValueAsString(cryptoKeyReader);
-		String expected = ("{'className':'org.apache.pulsar.reactive.client.jackson.PulsarReactiveClientModuleTest$TestCryptoKeyReader'}")
-				.replaceAll("'", "\"");
+		String expected = ("{'className':'" + TestCryptoKeyReader.class.getName() + "'}").replaceAll("'", "\"");
+		assertThat(json).isEqualTo(expected);
+	}
+
+	@Test
+	void shouldSerDeserExponentialDeliveryBackoff() throws Exception {
+		// @formatter:off
+		String content = ("{"
+				+ "    'className': '" + ExponentialRedeliveryBackoff.class.getName() + "'"
+				+ "}").replaceAll("'", "\"");
+		// @formatter:on
+		RedeliveryBackoff backoffReader = MAPPER.readValue(content, RedeliveryBackoff.class);
+		String json = MAPPER.writeValueAsString(backoffReader);
+		String expected = ("{'className':'" + ExponentialRedeliveryBackoff.class.getName() + "'}").replaceAll("'", "\"");
 		assertThat(json).isEqualTo(expected);
 	}
 
@@ -563,6 +596,29 @@ class PulsarReactiveClientModuleTest {
 		}
 		// CHECKSTYLE:ON
 
+	}
+
+	static class ExponentialRedeliveryBackoff implements RedeliveryBackoff {
+
+		// CHECKSTYLE:OFF
+		public ExponentialRedeliveryBackoff() {
+		}
+		// CHECKSTYLE:ON
+
+		@Override
+		public long next(int redeliveryCount) {
+			return redeliveryCount * 2L;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return (o instanceof ExponentialRedeliveryBackoff);
+		}
+
+		@Override
+		public int hashCode() {
+			return ExponentialRedeliveryBackoff.class.hashCode();
+		}
 	}
 
 }

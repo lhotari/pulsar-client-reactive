@@ -19,6 +19,7 @@
 
 package org.apache.pulsar.reactive.client.adapter;
 
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
 import org.testcontainers.containers.PulsarContainer;
@@ -32,19 +33,26 @@ final class SingletonPulsarContainer {
 
 	/** The singleton instance for Pulsar container. */
 	static PulsarContainer PULSAR_CONTAINER = new PulsarContainer(getPulsarImage())
-			.withEnv("PULSAR_PREFIX_acknowledgmentAtBatchIndexLevelEnabled", "true");
+		.withEnv("PULSAR_PREFIX_acknowledgmentAtBatchIndexLevelEnabled", "true");
 
 	static {
 		PULSAR_CONTAINER.start();
 	}
 
 	static PulsarClient createPulsarClient() throws PulsarClientException {
-		return PulsarClient.builder().serviceUrl(SingletonPulsarContainer.PULSAR_CONTAINER.getPulsarBrokerUrl())
-				.build();
+		return PulsarClient.builder()
+			.serviceUrl(SingletonPulsarContainer.PULSAR_CONTAINER.getPulsarBrokerUrl())
+			.build();
+	}
+
+	static PulsarAdmin createPulsarAdmin() throws PulsarClientException {
+		return PulsarAdmin.builder()
+			.serviceHttpUrl(SingletonPulsarContainer.PULSAR_CONTAINER.getHttpServiceUrl())
+			.build();
 	}
 
 	static DockerImageName getPulsarImage() {
-		return DockerImageName.parse("apachepulsar/pulsar:3.1.1");
+		return DockerImageName.parse("apachepulsar/pulsar:4.0.4");
 	}
 
 }
